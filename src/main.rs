@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::process;
 
 use clap::{Parser, Subcommand};
 
@@ -26,7 +27,22 @@ fn main() {
 
     match cli.command {
         Commands::Compare { file1, file2 } => {
-            game_localizer::commands::compare::run(file1, file2);
+            match game_localizer::commands::compare::run(&file1, &file2) {
+                Ok(result) => {
+                    println!("{}: {}", file1.display(), result.hash1);
+                    println!("{}: {}", file2.display(), result.hash2);
+                    if result.matches {
+                        println!("Files match");
+                    } else {
+                        println!("Files differ");
+                        process::exit(1);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Error: {}", e);
+                    process::exit(2);
+                }
+            }
         }
     }
 }
