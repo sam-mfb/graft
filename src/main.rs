@@ -21,8 +21,11 @@ enum Commands {
         /// Second file to compare
         file2: PathBuf,
     },
+    /// Check if a file matches a SHA-256 hash
     Check {
+        /// Hash to reference
         hash: String,
+        /// File to compare
         file: PathBuf,
     }
 }
