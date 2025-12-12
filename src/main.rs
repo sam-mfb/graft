@@ -14,34 +14,35 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Diff operations for single files
+    Diff {
+        #[command(subcommand)]
+        command: DiffCommands,
+    },
     /// Hash-related operations
     Hash {
         #[command(subcommand)]
         command: HashCommands,
     },
-    Patch {
-        #[command(subcommand)]
-        command: PatchCommands,
-    },
 }
 
 #[derive(Subcommand)]
-enum PatchCommands {
-    /// Create a patch from two files
+enum DiffCommands {
+    /// Create a diff from two files
     Create {
         /// Original file
         orig: PathBuf,
         /// Modified file
         new: PathBuf,
-        /// Path to write patch file to
-        patch: PathBuf,
+        /// Path to write diff file to
+        diff: PathBuf,
     },
-    /// Apply a patch to a file
+    /// Apply a diff to a file
     Apply {
         /// Original file
         orig: PathBuf,
-        /// Patch file
-        patch: PathBuf,
+        /// Diff file
+        diff: PathBuf,
         /// Path to write output file to
         output: PathBuf,
     },
@@ -74,11 +75,11 @@ fn main() {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Patch { command } => match command {
-            PatchCommands::Create { orig, new, patch } => {
-                match game_localizer::commands::patch_create::run(&orig, &new, &patch) {
+        Commands::Diff { command } => match command {
+            DiffCommands::Create { orig, new, diff } => {
+                match game_localizer::commands::diff_create::run(&orig, &new, &diff) {
                     Ok(()) => {
-                        println!("Patch written to {}", patch.display());
+                        println!("Diff written to {}", diff.display());
                     }
                     Err(e) => {
                         eprintln!("Error: {}", e);
@@ -86,10 +87,10 @@ fn main() {
                     }
                 }
             }
-            PatchCommands::Apply { orig, patch, output } => {
-                match game_localizer::commands::patch_apply::run(&orig, &patch, &output) {
+            DiffCommands::Apply { orig, diff, output } => {
+                match game_localizer::commands::diff_apply::run(&orig, &diff, &output) {
                     Ok(()) => {
-                        println!("Patched file written to {}", output.display());
+                        println!("Output written to {}", output.display());
                     }
                     Err(e) => {
                         eprintln!("Error: {}", e);

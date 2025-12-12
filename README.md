@@ -10,16 +10,16 @@ cargo install --path .
 
 ## Commands
 
-### Patch
+### Diff
 
-Create a patch:
+Create a diff:
 ```
-game-localizer patch create <original> <modified> <patch-output>
+game-localizer diff create <original> <modified> <diff-output>
 ```
 
-Apply a patch:
+Apply a diff:
 ```
-game-localizer patch apply <original> <patch-file> <output>
+game-localizer diff apply <original> <diff-file> <output>
 ```
 
 ### Hash

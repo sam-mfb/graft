@@ -2,12 +2,12 @@ use std::fs;
 use std::io;
 use std::path::Path;
 
-use crate::utils::patch::apply_patch;
+use crate::utils::diff::apply_diff;
 
-pub fn run(orig: &Path, patch: &Path, output: &Path) -> io::Result<()> {
+pub fn run(orig: &Path, diff: &Path, output: &Path) -> io::Result<()> {
     let orig_data = fs::read(orig)?;
-    let patch_data = fs::read(patch)?;
-    let result = apply_patch(&orig_data, &patch_data)?;
+    let diff_data = fs::read(diff)?;
+    let result = apply_diff(&orig_data, &diff_data)?;
     fs::write(output, result)?;
     Ok(())
 }
@@ -15,14 +15,14 @@ pub fn run(orig: &Path, patch: &Path, output: &Path) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::utils::patch::create_patch;
+    use crate::utils::diff::create_diff;
     use std::io::Write;
     use tempfile::NamedTempFile;
 
     #[test]
-    fn applies_patch_to_file() {
+    fn applies_diff_to_file() {
         let mut orig = NamedTempFile::new().unwrap();
-        let patch_file = NamedTempFile::new().unwrap();
+        let diff_file = NamedTempFile::new().unwrap();
         let output = NamedTempFile::new().unwrap();
 
         let orig_content = b"original content";
@@ -30,10 +30,10 @@ mod tests {
 
         orig.write_all(orig_content).unwrap();
 
-        let patch_data = create_patch(orig_content, new_content).unwrap();
-        fs::write(patch_file.path(), &patch_data).unwrap();
+        let diff_data = create_diff(orig_content, new_content).unwrap();
+        fs::write(diff_file.path(), &diff_data).unwrap();
 
-        run(orig.path(), patch_file.path(), output.path()).unwrap();
+        run(orig.path(), diff_file.path(), output.path()).unwrap();
 
         let result = fs::read(output.path()).unwrap();
         assert_eq!(result, new_content);
@@ -41,11 +41,11 @@ mod tests {
 
     #[test]
     fn nonexistent_file_returns_error() {
-        let patch_file = NamedTempFile::new().unwrap();
+        let diff_file = NamedTempFile::new().unwrap();
         let output = NamedTempFile::new().unwrap();
         let nonexistent = Path::new("/nonexistent/file.bin");
 
-        let result = run(nonexistent, patch_file.path(), output.path());
+        let result = run(nonexistent, diff_file.path(), output.path());
 
         assert!(result.is_err());
     }
