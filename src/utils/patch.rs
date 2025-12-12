@@ -6,6 +6,12 @@ pub fn create_patch(old: &[u8], new: &[u8]) -> io::Result<Vec<u8>> {
     Ok(patch)
 }
 
+pub fn apply_patch(orig: &[u8], patch: &[u8]) -> io::Result<Vec<u8>> {
+    let mut output = Vec::new();
+    bsdiff::patch(orig, &mut patch.as_ref(), &mut output)?;
+    Ok(output)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -35,10 +41,19 @@ mod tests {
         let new = b"modified file content here";
 
         let patch = create_patch(old, new).unwrap();
-
-        let mut restored = Vec::new();
-        bsdiff::patch(old, &mut patch.as_slice(), &mut restored).unwrap();
+        let restored = apply_patch(old, &patch).unwrap();
 
         assert_eq!(restored, new);
+    }
+
+    #[test]
+    fn apply_patch_roundtrip() {
+        let orig = b"the quick brown fox";
+        let modified = b"the slow brown dog";
+
+        let patch = create_patch(orig, modified).unwrap();
+        let result = apply_patch(orig, &patch).unwrap();
+
+        assert_eq!(result, modified);
     }
 }

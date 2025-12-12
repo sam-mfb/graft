@@ -27,14 +27,24 @@ enum Commands {
 
 #[derive(Subcommand)]
 enum PatchCommands {
-    File {
-        /// File to patch
+    /// Create a patch from two files
+    Create {
+        /// Original file
         orig: PathBuf,
-        /// File to create patch from
+        /// Modified file
         new: PathBuf,
         /// Path to write patch file to
-        patch: PathBuf
-    }
+        patch: PathBuf,
+    },
+    /// Apply a patch to a file
+    Apply {
+        /// Original file
+        orig: PathBuf,
+        /// Patch file
+        patch: PathBuf,
+        /// Path to write output file to
+        output: PathBuf,
+    },
 }
 
 #[derive(Subcommand)]
@@ -65,10 +75,21 @@ fn main() {
 
     match cli.command {
         Commands::Patch { command } => match command {
-            PatchCommands::File { orig, new, patch } => {
-                match game_localizer::commands::patch_file::run(&orig, &new, &patch) {
+            PatchCommands::Create { orig, new, patch } => {
+                match game_localizer::commands::patch_create::run(&orig, &new, &patch) {
                     Ok(()) => {
                         println!("Patch written to {}", patch.display());
+                    }
+                    Err(e) => {
+                        eprintln!("Error: {}", e);
+                        process::exit(2);
+                    }
+                }
+            }
+            PatchCommands::Apply { orig, patch, output } => {
+                match game_localizer::commands::patch_apply::run(&orig, &patch, &output) {
+                    Ok(()) => {
+                        println!("Patched file written to {}", output.display());
                     }
                     Err(e) => {
                         eprintln!("Error: {}", e);
