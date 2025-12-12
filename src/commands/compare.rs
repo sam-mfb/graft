@@ -1,7 +1,8 @@
+use std::fs;
 use std::io;
 use std::path::Path;
 
-use crate::utils::hash::hash_file;
+use crate::utils::hash::hash_bytes;
 
 pub struct CompareResult {
     pub hash1: String,
@@ -10,8 +11,10 @@ pub struct CompareResult {
 }
 
 pub fn run(file1: &Path, file2: &Path) -> io::Result<CompareResult> {
-    let hash1 = hash_file(file1)?;
-    let hash2 = hash_file(file2)?;
+    let data1 = fs::read(file1)?;
+    let data2 = fs::read(file2)?;
+    let hash1 = hash_bytes(&data1);
+    let hash2 = hash_bytes(&data2);
     let matches = hash1 == hash2;
     Ok(CompareResult { hash1, hash2, matches })
 }

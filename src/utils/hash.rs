@@ -1,22 +1,33 @@
 use sha2::{Digest, Sha256};
-use std::fs::File;
-use std::io::{self, BufReader, Read};
-use std::path::Path;
 
-pub fn hash_file(path: &Path) -> io::Result<String> {
-    let file = File::open(path)?;
-    let mut reader = BufReader::new(file);
+pub fn hash_bytes(data: &[u8]) -> String {
     let mut hasher = Sha256::new();
-    let mut buffer = [0u8; 8192];
+    hasher.update(data);
+    let result = hasher.finalize();
+    format!("{:x}", result)
+}
 
-    loop {
-        let bytes_read = reader.read(&mut buffer)?;
-        if bytes_read == 0 {
-            break;
-        }
-        hasher.update(&buffer[..bytes_read]);
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hashes_bytes() {
+        let hash = hash_bytes(b"hello world");
+        assert_eq!(hash.len(), 64); // SHA-256 produces 64 hex chars
     }
 
-    let result = hasher.finalize();
-    Ok(format!("{:x}", result))
+    #[test]
+    fn same_input_same_hash() {
+        let hash1 = hash_bytes(b"test data");
+        let hash2 = hash_bytes(b"test data");
+        assert_eq!(hash1, hash2);
+    }
+
+    #[test]
+    fn different_input_different_hash() {
+        let hash1 = hash_bytes(b"data a");
+        let hash2 = hash_bytes(b"data b");
+        assert_ne!(hash1, hash2);
+    }
 }

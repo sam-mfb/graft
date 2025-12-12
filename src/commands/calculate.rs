@@ -1,10 +1,12 @@
+use std::fs;
 use std::io;
 use std::path::Path;
 
-use crate::utils::hash::hash_file;
+use crate::utils::hash::hash_bytes;
 
 pub fn run(file: &Path) -> io::Result<String> {
-    hash_file(file)
+    let data = fs::read(file)?;
+    Ok(hash_bytes(&data))
 }
 
 #[cfg(test)]

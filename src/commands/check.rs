@@ -1,7 +1,8 @@
+use std::fs;
 use std::io;
 use std::path::Path;
 
-use crate::utils::hash::hash_file;
+use crate::utils::hash::hash_bytes;
 
 pub enum CheckResult {
     Match,
@@ -9,7 +10,8 @@ pub enum CheckResult {
 }
 
 pub fn run(expected: &str, file: &Path) -> io::Result<CheckResult> {
-    let actual = hash_file(file)?;
+    let data = fs::read(file)?;
+    let actual = hash_bytes(&data);
     if actual == expected {
         Ok(CheckResult::Match)
     } else {
@@ -32,7 +34,7 @@ mod tests {
     #[test]
     fn matching_hash_returns_match() {
         let file = create_temp_file(b"test content");
-        let hash = crate::utils::hash::hash_file(file.path()).unwrap();
+        let hash = crate::utils::hash::hash_bytes(b"test content");
 
         let result = run(&hash, file.path()).unwrap();
 
