@@ -14,10 +14,19 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Hash-related operations
+    Hash {
+        #[command(subcommand)]
+        command: HashCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum HashCommands {
     /// Calculate the SHA-256 hash of a file
     Calculate {
-        /// File to hash 
-        file: PathBuf
+        /// File to hash
+        file: PathBuf,
     },
     /// Compare two files by their SHA-256 hash
     Compare {
@@ -32,62 +41,61 @@ enum Commands {
         hash: String,
         /// File to compare
         file: PathBuf,
-    }
+    },
 }
 
 fn main() {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Calculate { file } => {
-            match game_localizer::commands::calculate::run(&file) {
-                Ok(result) => {
-                    println!("Hash for file {}: {}", file.display(), result);
-                    process::exit(1);
-                }
-                Err(e)=> {
-                    eprintln!("Error: {}",e);
-                    process::exit(2);
-                }
-            }
-        }
-        Commands::Compare { file1, file2 } => {
-            match game_localizer::commands::compare::run(&file1, &file2) {
-                Ok(result) => {
-                    println!("{}: {}", file1.display(), result.hash1);
-                    println!("{}: {}", file2.display(), result.hash2);
-                    if result.matches {
-                        println!("Files match");
-                    } else {
-                        println!("Files differ");
-                        process::exit(1);
+        Commands::Hash { command } => match command {
+            HashCommands::Calculate { file } => {
+                match game_localizer::commands::calculate::run(&file) {
+                    Ok(result) => {
+                        println!("Hash for file {}: {}", file.display(), result);
+                    }
+                    Err(e) => {
+                        eprintln!("Error: {}", e);
+                        process::exit(2);
                     }
                 }
-                Err(e) => {
-                    eprintln!("Error: {}", e);
-                    process::exit(2);
+            }
+            HashCommands::Compare { file1, file2 } => {
+                match game_localizer::commands::compare::run(&file1, &file2) {
+                    Ok(result) => {
+                        println!("{}: {}", file1.display(), result.hash1);
+                        println!("{}: {}", file2.display(), result.hash2);
+                        if result.matches {
+                            println!("Files match");
+                        } else {
+                            println!("Files differ");
+                            process::exit(1);
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Error: {}", e);
+                        process::exit(2);
+                    }
                 }
             }
-        }
-        Commands::Check { hash, file } => {
-            match game_localizer::commands::check::run(&hash,&file) {
-                Ok(result) => {
-                    match result {
+            HashCommands::Check { hash, file } => {
+                match game_localizer::commands::check::run(&hash, &file) {
+                    Ok(result) => match result {
                         CheckResult::Match => {
                             println!("Hash match");
                         }
-                        CheckResult::NoMatch {actual} => {
-                        println!("Hashes differ");
-                        println!("Expected hash: {}",hash);
-                        println!("Actual Hash: {}",actual);
+                        CheckResult::NoMatch { actual } => {
+                            println!("Hashes differ");
+                            println!("Expected hash: {}", hash);
+                            println!("Actual hash: {}", actual);
                         }
+                    },
+                    Err(e) => {
+                        eprintln!("Error: {}", e);
+                        process::exit(2);
                     }
                 }
-                Err(e) => {
-                    eprintln!("Error: {}", e);
-                    process::exit(2);
-                }
-      }
-    }
+            }
+        },
     }
 }
