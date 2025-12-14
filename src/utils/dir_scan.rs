@@ -5,21 +5,24 @@ use std::path::Path;
 
 use crate::utils::hash::hash_bytes;
 
-/// Represents a detected change between two directories.
+/// Represents a detected difference between two directories.
 /// This is an intermediate type - does not include diff_hash since
 /// the diff hasn't been created yet.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FileChange {
-    Patch {
+    /// File exists in both directories but content differs
+    Diff {
         file: String,
         original_hash: String,
         final_hash: String,
     },
-    Add {
+    /// File only exists in new directory
+    New {
         file: String,
         final_hash: String,
     },
-    Delete {
+    /// File only exists in original directory
+    Old {
         file: String,
         original_hash: String,
     },
@@ -28,9 +31,9 @@ pub enum FileChange {
 impl FileChange {
     pub fn file(&self) -> &str {
         match self {
-            FileChange::Patch { file, .. } => file,
-            FileChange::Add { file, .. } => file,
-            FileChange::Delete { file, .. } => file,
+            FileChange::Diff { file, .. } => file,
+            FileChange::New { file, .. } => file,
+            FileChange::Old { file, .. } => file,
         }
     }
 }
@@ -76,7 +79,7 @@ pub fn categorize_files(orig_dir: &Path, new_dir: &Path) -> io::Result<Vec<FileC
         let new_hash = hash_bytes(&new_data);
 
         if orig_hash != new_hash {
-            changes.push(FileChange::Patch {
+            changes.push(FileChange::Diff {
                 file: file.clone(),
                 original_hash: orig_hash,
                 final_hash: new_hash,
@@ -85,25 +88,25 @@ pub fn categorize_files(orig_dir: &Path, new_dir: &Path) -> io::Result<Vec<FileC
         // Unchanged files are skipped
     }
 
-    // Files only in new directory - add
+    // Files only in new directory
     for file in new_files.difference(&orig_files) {
         let new_path = new_dir.join(file);
         let new_data = fs::read(&new_path)?;
         let new_hash = hash_bytes(&new_data);
 
-        changes.push(FileChange::Add {
+        changes.push(FileChange::New {
             file: file.clone(),
             final_hash: new_hash,
         });
     }
 
-    // Files only in original directory - delete
+    // Files only in original directory
     for file in orig_files.difference(&new_files) {
         let orig_path = orig_dir.join(file);
         let orig_data = fs::read(&orig_path)?;
         let orig_hash = hash_bytes(&orig_data);
 
-        changes.push(FileChange::Delete {
+        changes.push(FileChange::Old {
             file: file.clone(),
             original_hash: orig_hash,
         });
@@ -166,7 +169,7 @@ mod tests {
     }
 
     #[test]
-    fn categorize_identifies_patch() {
+    fn categorize_identifies_diff() {
         let orig_dir = tempdir().unwrap();
         let new_dir = tempdir().unwrap();
 
@@ -178,13 +181,13 @@ mod tests {
         assert_eq!(changes.len(), 1);
         assert!(matches!(
             &changes[0],
-            FileChange::Patch { file, original_hash, final_hash }
+            FileChange::Diff { file, original_hash, final_hash }
             if file == "file.bin" && original_hash != final_hash
         ));
     }
 
     #[test]
-    fn categorize_identifies_add() {
+    fn categorize_identifies_new() {
         let orig_dir = tempdir().unwrap();
         let new_dir = tempdir().unwrap();
 
@@ -195,12 +198,12 @@ mod tests {
         assert_eq!(changes.len(), 1);
         assert!(matches!(
             &changes[0],
-            FileChange::Add { file, .. } if file == "new_file.bin"
+            FileChange::New { file, .. } if file == "new_file.bin"
         ));
     }
 
     #[test]
-    fn categorize_identifies_delete() {
+    fn categorize_identifies_old() {
         let orig_dir = tempdir().unwrap();
         let new_dir = tempdir().unwrap();
 
@@ -211,7 +214,7 @@ mod tests {
         assert_eq!(changes.len(), 1);
         assert!(matches!(
             &changes[0],
-            FileChange::Delete { file, .. } if file == "old_file.bin"
+            FileChange::Old { file, .. } if file == "old_file.bin"
         ));
     }
 
@@ -241,19 +244,19 @@ mod tests {
         fs::write(orig_dir.path().join("modified.bin"), b"old").unwrap();
         fs::write(new_dir.path().join("modified.bin"), b"new").unwrap();
 
-        // Added
-        fs::write(new_dir.path().join("added.bin"), b"added").unwrap();
+        // New (only in new)
+        fs::write(new_dir.path().join("new.bin"), b"new").unwrap();
 
-        // Deleted
-        fs::write(orig_dir.path().join("deleted.bin"), b"deleted").unwrap();
+        // Old (only in orig)
+        fs::write(orig_dir.path().join("old.bin"), b"old").unwrap();
 
         let changes = categorize_files(orig_dir.path(), new_dir.path()).unwrap();
 
         assert_eq!(changes.len(), 3);
 
-        assert!(changes.iter().any(|c| matches!(c, FileChange::Add { file, .. } if file == "added.bin")));
-        assert!(changes.iter().any(|c| matches!(c, FileChange::Delete { file, .. } if file == "deleted.bin")));
-        assert!(changes.iter().any(|c| matches!(c, FileChange::Patch { file, .. } if file == "modified.bin")));
+        assert!(changes.iter().any(|c| matches!(c, FileChange::New { file, .. } if file == "new.bin")));
+        assert!(changes.iter().any(|c| matches!(c, FileChange::Old { file, .. } if file == "old.bin")));
+        assert!(changes.iter().any(|c| matches!(c, FileChange::Diff { file, .. } if file == "modified.bin")));
     }
 
     #[test]
@@ -277,22 +280,22 @@ mod tests {
 
     #[test]
     fn file_helper_returns_filename() {
-        let patch = FileChange::Patch {
+        let diff = FileChange::Diff {
             file: "a.bin".to_string(),
             original_hash: "x".to_string(),
             final_hash: "z".to_string(),
         };
-        let add = FileChange::Add {
+        let new = FileChange::New {
             file: "b.bin".to_string(),
             final_hash: "x".to_string(),
         };
-        let delete = FileChange::Delete {
+        let old = FileChange::Old {
             file: "c.bin".to_string(),
             original_hash: "x".to_string(),
         };
 
-        assert_eq!(patch.file(), "a.bin");
-        assert_eq!(add.file(), "b.bin");
-        assert_eq!(delete.file(), "c.bin");
+        assert_eq!(diff.file(), "a.bin");
+        assert_eq!(new.file(), "b.bin");
+        assert_eq!(old.file(), "c.bin");
     }
 }
