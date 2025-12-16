@@ -2,6 +2,7 @@ use std::fs;
 use std::io;
 use std::path::Path;
 
+use crate::patch::{DIFFS_DIR, DIFF_EXTENSION, FILES_DIR, MANIFEST_FILENAME};
 use crate::utils::diff::create_diff;
 use crate::utils::dir_scan::{categorize_files, FileChange};
 use crate::utils::hash::hash_bytes;
@@ -14,8 +15,8 @@ pub fn run(orig_dir: &Path, new_dir: &Path, output_dir: &Path, version: u32) -> 
 
     // Create output directory structure
     fs::create_dir_all(output_dir)?;
-    let diffs_dir = output_dir.join("diffs");
-    let files_dir = output_dir.join("files");
+    let diffs_dir = output_dir.join(DIFFS_DIR);
+    let files_dir = output_dir.join(FILES_DIR);
 
     // Only create subdirs if we need them
     let has_diffs = changes.iter().any(|c| matches!(c, FileChange::Diff { .. }));
@@ -43,7 +44,7 @@ pub fn run(orig_dir: &Path, new_dir: &Path, output_dir: &Path, version: u32) -> 
                 let diff_data = create_diff(&orig_data, &new_data)?;
 
                 // Write diff file
-                let diff_path = diffs_dir.join(format!("{}.diff", file));
+                let diff_path = diffs_dir.join(format!("{}{}", file, DIFF_EXTENSION));
                 fs::write(&diff_path, &diff_data)?;
 
                 // Compute diff hash
@@ -80,7 +81,7 @@ pub fn run(orig_dir: &Path, new_dir: &Path, output_dir: &Path, version: u32) -> 
     manifest.entries.sort_by(|a, b| a.file().cmp(b.file()));
 
     // Write manifest
-    let manifest_path = output_dir.join("manifest.json");
+    let manifest_path = output_dir.join(MANIFEST_FILENAME);
     manifest.save(&manifest_path)?;
 
     Ok(())

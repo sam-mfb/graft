@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::Path;
 
-use crate::patch::PatchError;
+use crate::patch::{PatchError, DIFFS_DIR, DIFF_EXTENSION, FILES_DIR};
 use crate::utils::diff::apply_diff;
 use crate::utils::manifest::ManifestEntry;
 
@@ -18,7 +18,23 @@ pub fn apply_entry(
     match entry {
         ManifestEntry::Patch { file, .. } => {
             let target_path = target_dir.join(file);
-            let diff_path = patch_dir.join("diffs").join(format!("{}.diff", file));
+            let diff_path = patch_dir
+                .join(DIFFS_DIR)
+                .join(format!("{}{}", file, DIFF_EXTENSION));
+
+            // Validate files exist before attempting operations
+            if !target_path.exists() {
+                return Err(PatchError::ValidationFailed {
+                    file: file.clone(),
+                    reason: "target file not found".to_string(),
+                });
+            }
+            if !diff_path.exists() {
+                return Err(PatchError::ValidationFailed {
+                    file: file.clone(),
+                    reason: "diff file not found in patch".to_string(),
+                });
+            }
 
             let original_data = fs::read(&target_path).map_err(|e| PatchError::ApplyFailed {
                 file: file.clone(),
@@ -42,8 +58,16 @@ pub fn apply_entry(
             })?;
         }
         ManifestEntry::Add { file, .. } => {
-            let source_path = patch_dir.join("files").join(file);
+            let source_path = patch_dir.join(FILES_DIR).join(file);
             let target_path = target_dir.join(file);
+
+            // Validate source file exists
+            if !source_path.exists() {
+                return Err(PatchError::ValidationFailed {
+                    file: file.clone(),
+                    reason: "source file not found in patch".to_string(),
+                });
+            }
 
             fs::copy(&source_path, &target_path).map_err(|e| PatchError::ApplyFailed {
                 file: file.clone(),
@@ -86,8 +110,15 @@ mod tests {
 
         // Set up diff file
         let diff_data = create_diff(original_content, new_content).unwrap();
-        fs::create_dir_all(patch_dir.path().join("diffs")).unwrap();
-        fs::write(patch_dir.path().join("diffs/file.bin.diff"), &diff_data).unwrap();
+        fs::create_dir_all(patch_dir.path().join(DIFFS_DIR)).unwrap();
+        fs::write(
+            patch_dir
+                .path()
+                .join(DIFFS_DIR)
+                .join(format!("file.bin{}", DIFF_EXTENSION)),
+            &diff_data,
+        )
+        .unwrap();
 
         let entry = ManifestEntry::Patch {
             file: "file.bin".to_string(),
@@ -110,8 +141,8 @@ mod tests {
         let content = b"new file content";
 
         // Set up source file in patch
-        fs::create_dir_all(patch_dir.path().join("files")).unwrap();
-        fs::write(patch_dir.path().join("files/new.bin"), content).unwrap();
+        fs::create_dir_all(patch_dir.path().join(FILES_DIR)).unwrap();
+        fs::write(patch_dir.path().join(FILES_DIR).join("new.bin"), content).unwrap();
 
         let entry = ManifestEntry::Add {
             file: "new.bin".to_string(),
@@ -160,9 +191,20 @@ mod tests {
     }
 
     #[test]
-    fn apply_patch_missing_original_errors() {
+    fn apply_patch_missing_target_returns_validation_error() {
         let target_dir = tempdir().unwrap();
         let patch_dir = tempdir().unwrap();
+
+        // Create diff file but not target file
+        fs::create_dir_all(patch_dir.path().join(DIFFS_DIR)).unwrap();
+        fs::write(
+            patch_dir
+                .path()
+                .join(DIFFS_DIR)
+                .join(format!("missing.bin{}", DIFF_EXTENSION)),
+            b"diff",
+        )
+        .unwrap();
 
         let entry = ManifestEntry::Patch {
             file: "missing.bin".to_string(),
@@ -172,11 +214,30 @@ mod tests {
         };
 
         let result = apply_entry(&entry, target_dir.path(), patch_dir.path());
-        assert!(matches!(result, Err(PatchError::ApplyFailed { .. })));
+        assert!(matches!(result, Err(PatchError::ValidationFailed { .. })));
     }
 
     #[test]
-    fn apply_add_missing_source_errors() {
+    fn apply_patch_missing_diff_returns_validation_error() {
+        let target_dir = tempdir().unwrap();
+        let patch_dir = tempdir().unwrap();
+
+        // Create target file but not diff file
+        fs::write(target_dir.path().join("file.bin"), b"content").unwrap();
+
+        let entry = ManifestEntry::Patch {
+            file: "file.bin".to_string(),
+            original_hash: "x".to_string(),
+            diff_hash: "y".to_string(),
+            final_hash: "z".to_string(),
+        };
+
+        let result = apply_entry(&entry, target_dir.path(), patch_dir.path());
+        assert!(matches!(result, Err(PatchError::ValidationFailed { .. })));
+    }
+
+    #[test]
+    fn apply_add_missing_source_returns_validation_error() {
         let target_dir = tempdir().unwrap();
         let patch_dir = tempdir().unwrap();
 
@@ -186,6 +247,6 @@ mod tests {
         };
 
         let result = apply_entry(&entry, target_dir.path(), patch_dir.path());
-        assert!(matches!(result, Err(PatchError::ApplyFailed { .. })));
+        assert!(matches!(result, Err(PatchError::ValidationFailed { .. })));
     }
 }

@@ -202,6 +202,13 @@ pub mod manifest;
 ```rust
 pub mod apply;
 pub mod verify;
+
+// Constants for patch directory structure
+pub const DIFFS_DIR: &str = "diffs";
+pub const FILES_DIR: &str = "files";
+pub const DIFF_EXTENSION: &str = ".diff";
+pub const MANIFEST_FILENAME: &str = "manifest.json";
+pub const BACKUP_DIR: &str = ".patch-backup";
 ```
 
 ### `src/commands/mod.rs`
@@ -324,7 +331,7 @@ pub enum PatchError {
 ### Phase 5: Patch Orchestration
 
 **Build:**
-- Create `src/patch/mod.rs`
+- Create `src/patch/mod.rs` with `PatchError` and constants
 - Create `src/patch/apply.rs` with `apply_entry()`
 - Create `src/patch/verify.rs` with `verify_entry()`
 - Update `src/lib.rs`
@@ -337,6 +344,22 @@ pub enum PatchError {
 - `verify_entry` fails on incorrect hash
 
 **Review:** Verify error types are used correctly
+
+---
+
+### Phase 5b: Patch Orchestration Fixes
+
+**Build:**
+- Add constants to `src/patch/mod.rs`: `DIFFS_DIR`, `FILES_DIR`, `DIFF_EXTENSION`, `MANIFEST_FILENAME`, `BACKUP_DIR`
+- Update `src/patch/apply.rs` to use constants instead of hardcoded strings
+- Update `src/patch/apply.rs` to validate file existence before operations:
+  - Use `ValidationFailed` for missing files (precondition not met)
+  - Use `ApplyFailed` for operation errors (permission denied, disk full, etc.)
+- Update `src/commands/patch_create.rs` to use constants
+
+**Test:**
+- Verify `ValidationFailed` returned when file missing
+- Verify `ApplyFailed` returned when operation fails (not precondition)
 
 ---
 
