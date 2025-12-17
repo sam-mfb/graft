@@ -85,6 +85,12 @@ At runtime: extract to temp dir, load manifest, apply patch.
 - Useful for advanced users and E2E testing
 - Outputs progress and errors to stdout/stderr
 
+**Localization:**
+- UI strings stored in locale files (`locales/en.json`, `locales/ja.json`, etc.)
+- Builder embeds selected locales into the patcher
+- Runtime auto-detects system locale, falls back to English
+- Strings: button labels, status messages, error descriptions
+
 **Key dependencies:**
 - `eframe` / `egui` - GUI framework
 - `rfd` - Native file dialogs
@@ -99,7 +105,10 @@ patch-gui-builder build <PATCH_DIR> [OPTIONS]
 OPTIONS:
     -o, --output <DIR>       Output directory [default: ./dist]
     -n, --name <NAME>        Patcher name [default: from manifest]
-    --targets <TARGETS>      linux,windows,macos [default: linux,windows]
+    --targets <TARGETS>      linux-x64,linux-arm64,windows,macos-x64,macos-arm64
+                             [default: linux-x64,linux-arm64,windows]
+    --locales <LOCALES>      Locales to include [default: en]
+                             Example: --locales en,ja,es
 ```
 
 ## Implementation Phases
@@ -112,10 +121,12 @@ OPTIONS:
 
 ### Phase 2: GUI Runtime (`patcher-gui`)
 - Create egui app with state machine
+- Implement demo mode with mock data
 - Implement patch extraction from embedded tar.gz
 - Folder selection with `rfd`
 - Progress display during apply
 - Success/error views
+- Headless mode (`--headless <target>`)
 
 ### Phase 3: Builder Tool (`patch-gui-builder`)
 - CLI with clap
@@ -123,14 +134,25 @@ OPTIONS:
 - Template project generation
 - Local `cargo build --release` integration
 
-### Phase 4: Cross-Compilation
+### Phase 4: Cross-Compilation (Linux + Windows)
 - Add Cross.toml configuration
-- Build orchestration for multiple targets
+- Build orchestration for x86_64 Linux, ARM64 Linux, Windows
 - Copy artifacts to output directory
-- Document macOS limitations (requires osxcross)
 
-### Phase 5: Polish
-- Customization options (name, window title)
+### Phase 5: macOS Support
+- Document native build on Mac (`cargo build --release`)
+- Add `--targets` flag to select platforms
+- Optional: GitHub Actions workflow for all platforms
+
+### Phase 6: Localization
+- Add localization framework (e.g., `rust-i18n` or `fluent`)
+- Extract all UI strings to locale files
+- Support locale selection in builder (`--locale en,ja,es`)
+- Auto-detect system locale at runtime
+- Fallback to English if locale unavailable
+
+### Phase 7: Polish
+- Customization options (name, window title, icon)
 - Better error messages
 - Documentation
 
@@ -169,6 +191,8 @@ rfd = "0.15"
 tar = "0.4"
 flate2 = "1.0"
 tempfile = "3"
+rust-i18n = "3"                   # Localization
+sys-locale = "0.3"                # Detect system locale
 patch-core = { path = "../patch-core" }
 ```
 
