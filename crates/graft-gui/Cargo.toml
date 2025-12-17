@@ -1,0 +1,17 @@
+[package]
+name = "graft-gui"
+version = "0.1.0"
+edition = "2024"
+
+[features]
+# This feature is enabled by graft-builder when generating a patcher with embedded patch data
+embedded_patch = []
+
+[dependencies]
+eframe = "0.29"
+rfd = "0.15"
+tar = "0.4"
+flate2 = "1.0"
+tempfile = "3"
+clap = { version = "4", features = ["derive"] }
+graft-core = { path = "../graft-core" }

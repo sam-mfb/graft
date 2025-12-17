@@ -117,7 +117,7 @@ OPTIONS:
 - Move CLI to `crates/graft/`
 - Update imports, verify tests pass
 
-### Phase 2: GUI Runtime (`graft-gui`)
+### Phase 2: GUI Runtime (`graft-gui`) ✓
 - Create egui app with state machine
 - Implement demo mode with mock data
 - Implement patch extraction from embedded tar.gz

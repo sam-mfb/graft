@@ -2,5 +2,6 @@
 members = [
     "crates/graft-core",
     "crates/graft",
+    "crates/graft-gui",
 ]
 resolver = "2"
