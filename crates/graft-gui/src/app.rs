@@ -95,6 +95,8 @@ pub struct GraftApp {
     progress_rx: Option<mpsc::Receiver<ProgressMessage>>,
     /// Demo mode flag
     demo_mode: bool,
+    /// Text input for manual path entry
+    path_input: String,
 }
 
 impl GraftApp {
@@ -107,6 +109,7 @@ impl GraftApp {
             manifest: None,
             progress_rx: None,
             demo_mode: true,
+            path_input: String::new(),
         }
     }
 
@@ -120,6 +123,7 @@ impl GraftApp {
             manifest: Some(manifest),
             progress_rx: None,
             demo_mode: false,
+            path_input: String::new(),
         }
     }
 
@@ -249,9 +253,22 @@ impl GraftApp {
 
         ui.add_space(24.0);
 
-        if ui.button("Select Folder...").clicked() {
-            self.select_folder();
-        }
+        ui.horizontal(|ui| {
+            if ui.button("Select Folder...").clicked() {
+                self.select_folder();
+            }
+        });
+
+        ui.add_space(8.0);
+        ui.label("Or enter path manually:");
+        ui.horizontal(|ui| {
+            ui.add(egui::TextEdit::singleline(&mut self.path_input).hint_text("/path/to/folder").desired_width(250.0));
+            let path = PathBuf::from(&self.path_input);
+            let valid = !self.path_input.is_empty() && path.is_absolute();
+            if ui.add_enabled(valid, egui::Button::new("Use Path")).clicked() {
+                self.state = AppState::FolderSelected { path };
+            }
+        });
 
         if self.demo_mode {
             ui.add_space(8.0);
@@ -331,24 +348,51 @@ impl GraftApp {
         }
     }
 
-    fn render_success(&self, ui: &mut egui::Ui, path: &PathBuf, files_patched: usize) {
+    fn render_success(&self, ctx: &egui::Context, ui: &mut egui::Ui, path: &PathBuf, files_patched: usize) {
         ui.vertical_centered(|ui| {
+            ui.add_space(24.0);
+
+            // Green circle with white checkmark
+            let (rect, _) = ui.allocate_exact_size(egui::vec2(80.0, 80.0), egui::Sense::hover());
+            ui.painter().circle_filled(rect.center(), 40.0, egui::Color32::from_rgb(34, 197, 94));
+            ui.painter().text(
+                rect.center(),
+                egui::Align2::CENTER_CENTER,
+                "\u{2713}",
+                egui::FontId::proportional(48.0),
+                egui::Color32::WHITE,
+            );
+
             ui.add_space(16.0);
-            ui.label(egui::RichText::new("\u{2713}").size(64.0).color(egui::Color32::GREEN));
-            ui.add_space(8.0);
             ui.heading("Patch Applied Successfully!");
             ui.add_space(16.0);
             ui.label(format!("{} operations completed", files_patched));
             ui.add_space(8.0);
             ui.label(egui::RichText::new(path.display().to_string()).monospace().small());
+            ui.add_space(24.0);
+
+            if ui.button("Quit").clicked() {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
         });
     }
 
-    fn render_error(&mut self, ui: &mut egui::Ui, message: String, details: Option<String>, show_details: bool) {
+    fn render_error(&mut self, ctx: &egui::Context, ui: &mut egui::Ui, message: String, details: Option<String>, show_details: bool) {
         ui.vertical_centered(|ui| {
+            ui.add_space(24.0);
+
+            // Red circle with white X
+            let (rect, _) = ui.allocate_exact_size(egui::vec2(80.0, 80.0), egui::Sense::hover());
+            ui.painter().circle_filled(rect.center(), 40.0, egui::Color32::from_rgb(239, 68, 68));
+            ui.painter().text(
+                rect.center(),
+                egui::Align2::CENTER_CENTER,
+                "\u{2717}",
+                egui::FontId::proportional(48.0),
+                egui::Color32::WHITE,
+            );
+
             ui.add_space(16.0);
-            ui.label(egui::RichText::new("\u{2717}").size(64.0).color(egui::Color32::RED));
-            ui.add_space(8.0);
             ui.heading("Error");
         });
 
@@ -375,9 +419,14 @@ impl GraftApp {
         }
 
         ui.add_space(16.0);
-        if ui.button("Try Again").clicked() {
-            self.state = AppState::Welcome;
-        }
+        ui.horizontal(|ui| {
+            if ui.button("Try Again").clicked() {
+                self.state = AppState::Welcome;
+            }
+            if ui.button("Quit").clicked() {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+            }
+        });
     }
 }
 
@@ -402,9 +451,9 @@ impl eframe::App for GraftApp {
                 AppState::Applying { current_file, progress, total, completed, .. } => {
                     self.render_applying(ui, current_file, progress, total, completed)
                 }
-                AppState::Success { path, files_patched } => self.render_success(ui, &path, files_patched),
+                AppState::Success { path, files_patched } => self.render_success(ctx, ui, &path, files_patched),
                 AppState::Error { message, details, show_details } => {
-                    self.render_error(ui, message, details, show_details)
+                    self.render_error(ctx, ui, message, details, show_details)
                 }
             }
         });
@@ -415,8 +464,8 @@ impl eframe::App for GraftApp {
 pub fn run(patch_data: Option<&[u8]>) -> eframe::Result<()> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([400.0, 350.0])
-            .with_min_inner_size([350.0, 300.0]),
+            .with_inner_size([400.0, 380.0])
+            .with_min_inner_size([350.0, 340.0]),
         ..Default::default()
     };
 
@@ -436,7 +485,11 @@ pub fn run(patch_data: Option<&[u8]>) -> eframe::Result<()> {
         GraftApp::demo()
     };
 
-    eframe::run_native("Graft Patcher", options, Box::new(|_cc| Ok(Box::new(app))))
+    eframe::run_native("Graft Patcher", options, Box::new(|cc| {
+        // Use light theme
+        cc.egui_ctx.set_visuals(egui::Visuals::light());
+        Ok(Box::new(app))
+    }))
 }
 
 /// Extract patch data from compressed tar archive and load manifest
