@@ -1,6 +1,5 @@
+use crate::runner::{apply_patch, mock_info, PatchInfo, PatchRunner, ProgressEvent};
 use eframe::egui;
-use graft_core::patch::{apply::apply_entry, MANIFEST_FILENAME};
-use graft_core::utils::manifest::{Manifest, ManifestEntry};
 use std::path::PathBuf;
 use std::sync::mpsc;
 use std::thread;
@@ -30,55 +29,22 @@ pub enum AppState {
     },
 }
 
-/// Progress update message from worker thread
+/// Progress update message from worker thread (mirrors ProgressEvent for channel use)
 #[derive(Debug)]
 pub enum ProgressMessage {
-    /// Starting to process a file
     Processing { file: String, index: usize, total: usize },
-    /// Patch completed successfully
     Done { files_patched: usize },
-    /// An error occurred
     Error { message: String, details: Option<String> },
 }
 
-/// Patch information loaded from manifest
-#[derive(Debug, Clone)]
-pub struct PatchInfo {
-    pub version: u32,
-    pub entry_count: usize,
-    pub patches: usize,
-    pub additions: usize,
-    pub deletions: usize,
-}
-
-impl PatchInfo {
-    pub fn from_manifest(manifest: &Manifest) -> Self {
-        let mut patches = 0;
-        let mut additions = 0;
-        let mut deletions = 0;
-        for entry in &manifest.entries {
-            match entry {
-                ManifestEntry::Patch { .. } => patches += 1,
-                ManifestEntry::Add { .. } => additions += 1,
-                ManifestEntry::Delete { .. } => deletions += 1,
+impl From<ProgressEvent> for ProgressMessage {
+    fn from(event: ProgressEvent) -> Self {
+        match event {
+            ProgressEvent::Processing { file, index, total } => {
+                ProgressMessage::Processing { file, index, total }
             }
-        }
-        PatchInfo {
-            version: manifest.version,
-            entry_count: manifest.entries.len(),
-            patches,
-            additions,
-            deletions,
-        }
-    }
-
-    pub fn mock() -> Self {
-        PatchInfo {
-            version: 1,
-            entry_count: 42,
-            patches: 35,
-            additions: 5,
-            deletions: 2,
+            ProgressEvent::Done { files_patched } => ProgressMessage::Done { files_patched },
+            ProgressEvent::Error { message, details } => ProgressMessage::Error { message, details },
         }
     }
 }
@@ -87,10 +53,8 @@ impl PatchInfo {
 pub struct GraftApp {
     state: AppState,
     patch_info: PatchInfo,
-    /// Path to extracted patch directory (or None for demo mode)
-    patch_dir: Option<PathBuf>,
-    /// Manifest entries (or None for demo mode)
-    manifest: Option<Manifest>,
+    /// Patch runner (None for demo mode)
+    runner: Option<PatchRunner>,
     /// Channel for receiving progress updates from worker thread
     progress_rx: Option<mpsc::Receiver<ProgressMessage>>,
     /// Demo mode flag
@@ -104,23 +68,21 @@ impl GraftApp {
     pub fn demo() -> Self {
         GraftApp {
             state: AppState::Welcome,
-            patch_info: PatchInfo::mock(),
-            patch_dir: None,
-            manifest: None,
+            patch_info: mock_info(),
+            runner: None,
             progress_rx: None,
             demo_mode: true,
             path_input: String::new(),
         }
     }
 
-    /// Create a new app with real patch data
-    pub fn new(patch_dir: PathBuf, manifest: Manifest) -> Self {
-        let patch_info = PatchInfo::from_manifest(&manifest);
+    /// Create a new app with a patch runner
+    pub fn new(runner: PatchRunner) -> Self {
+        let patch_info = runner.info().clone();
         GraftApp {
             state: AppState::Welcome,
             patch_info,
-            patch_dir: Some(patch_dir),
-            manifest: Some(manifest),
+            runner: Some(runner),
             progress_rx: None,
             demo_mode: false,
             path_input: String::new(),
@@ -149,8 +111,10 @@ impl GraftApp {
         let (tx, rx) = mpsc::channel();
         self.progress_rx = Some(rx);
 
-        let patch_dir = self.patch_dir.clone().unwrap();
-        let manifest = self.manifest.clone().unwrap();
+        // Clone what we need for the worker thread
+        let runner = self.runner.as_ref().unwrap();
+        let patch_dir = runner.patch_dir().to_path_buf();
+        let manifest = runner.manifest().clone();
         let total = manifest.entries.len();
 
         self.state = AppState::Applying {
@@ -161,27 +125,10 @@ impl GraftApp {
             completed: 0,
         };
 
-        // Spawn worker thread
+        // Spawn worker thread that uses shared apply logic
         thread::spawn(move || {
-            for (i, entry) in manifest.entries.iter().enumerate() {
-                let file = entry.file().to_string();
-                let _ = tx.send(ProgressMessage::Processing {
-                    file: file.clone(),
-                    index: i,
-                    total,
-                });
-
-                if let Err(e) = apply_entry(entry, &target_path, &patch_dir) {
-                    let _ = tx.send(ProgressMessage::Error {
-                        message: format!("Failed to apply patch to '{}'", file),
-                        details: Some(e.to_string()),
-                    });
-                    return;
-                }
-            }
-
-            let _ = tx.send(ProgressMessage::Done {
-                files_patched: manifest.entries.len(),
+            let _ = apply_patch(&manifest, &patch_dir, &target_path, |event| {
+                let _ = tx.send(ProgressMessage::from(event));
             });
         });
     }
@@ -262,17 +209,28 @@ impl GraftApp {
         ui.add_space(8.0);
         ui.label("Or enter path manually:");
         ui.horizontal(|ui| {
-            ui.add(egui::TextEdit::singleline(&mut self.path_input).hint_text("/path/to/folder").desired_width(250.0));
+            ui.add(
+                egui::TextEdit::singleline(&mut self.path_input)
+                    .hint_text("/path/to/folder")
+                    .desired_width(250.0),
+            );
             let path = PathBuf::from(&self.path_input);
             let valid = !self.path_input.is_empty() && path.is_absolute();
-            if ui.add_enabled(valid, egui::Button::new("Use Path")).clicked() {
+            if ui
+                .add_enabled(valid, egui::Button::new("Use Path"))
+                .clicked()
+            {
                 self.state = AppState::FolderSelected { path };
             }
         });
 
         if self.demo_mode {
             ui.add_space(8.0);
-            ui.label(egui::RichText::new("(Demo Mode)").color(egui::Color32::GRAY).italics());
+            ui.label(
+                egui::RichText::new("(Demo Mode)")
+                    .color(egui::Color32::GRAY)
+                    .italics(),
+            );
         }
     }
 
@@ -303,7 +261,14 @@ impl GraftApp {
         });
     }
 
-    fn render_applying(&mut self, ui: &mut egui::Ui, current_file: String, progress: f32, total: usize, completed: usize) {
+    fn render_applying(
+        &mut self,
+        ui: &mut egui::Ui,
+        current_file: String,
+        progress: f32,
+        total: usize,
+        completed: usize,
+    ) {
         ui.heading("Applying Patch...");
         ui.add_space(16.0);
 
@@ -318,7 +283,13 @@ impl GraftApp {
             ui.add_space(16.0);
             ui.horizontal(|ui| {
                 if ui.button("Simulate Progress").clicked() {
-                    if let AppState::Applying { path, total, completed, .. } = &self.state {
+                    if let AppState::Applying {
+                        path,
+                        total,
+                        completed,
+                        ..
+                    } = &self.state
+                    {
                         let new_completed = (completed + 1).min(*total);
                         let new_progress = new_completed as f32 / *total as f32;
                         if new_completed >= *total {
@@ -340,7 +311,10 @@ impl GraftApp {
                 if ui.button("Simulate Error").clicked() {
                     self.state = AppState::Error {
                         message: "Failed to apply patch".to_string(),
-                        details: Some("Demo error: This is a simulated error for testing the error state display.".to_string()),
+                        details: Some(
+                            "Demo error: This is a simulated error for testing the error state display."
+                                .to_string(),
+                        ),
                         show_details: false,
                     };
                 }
@@ -348,13 +322,20 @@ impl GraftApp {
         }
     }
 
-    fn render_success(&self, ctx: &egui::Context, ui: &mut egui::Ui, path: &PathBuf, files_patched: usize) {
+    fn render_success(
+        &self,
+        ctx: &egui::Context,
+        ui: &mut egui::Ui,
+        path: &PathBuf,
+        files_patched: usize,
+    ) {
         ui.vertical_centered(|ui| {
             ui.add_space(24.0);
 
             // Green circle with white checkmark
             let (rect, _) = ui.allocate_exact_size(egui::vec2(80.0, 80.0), egui::Sense::hover());
-            ui.painter().circle_filled(rect.center(), 40.0, egui::Color32::from_rgb(34, 197, 94));
+            ui.painter()
+                .circle_filled(rect.center(), 40.0, egui::Color32::from_rgb(34, 197, 94));
             ui.painter().text(
                 rect.center(),
                 egui::Align2::CENTER_CENTER,
@@ -368,7 +349,11 @@ impl GraftApp {
             ui.add_space(16.0);
             ui.label(format!("{} operations completed", files_patched));
             ui.add_space(8.0);
-            ui.label(egui::RichText::new(path.display().to_string()).monospace().small());
+            ui.label(
+                egui::RichText::new(path.display().to_string())
+                    .monospace()
+                    .small(),
+            );
             ui.add_space(24.0);
 
             if ui.button("Quit").clicked() {
@@ -377,13 +362,21 @@ impl GraftApp {
         });
     }
 
-    fn render_error(&mut self, ctx: &egui::Context, ui: &mut egui::Ui, message: String, details: Option<String>, show_details: bool) {
+    fn render_error(
+        &mut self,
+        ctx: &egui::Context,
+        ui: &mut egui::Ui,
+        message: String,
+        details: Option<String>,
+        show_details: bool,
+    ) {
         ui.vertical_centered(|ui| {
             ui.add_space(24.0);
 
             // Red circle with white X
             let (rect, _) = ui.allocate_exact_size(egui::vec2(80.0, 80.0), egui::Sense::hover());
-            ui.painter().circle_filled(rect.center(), 40.0, egui::Color32::from_rgb(239, 68, 68));
+            ui.painter()
+                .circle_filled(rect.center(), 40.0, egui::Color32::from_rgb(239, 68, 68));
             ui.painter().text(
                 rect.center(),
                 egui::Align2::CENTER_CENTER,
@@ -401,7 +394,11 @@ impl GraftApp {
 
         if let Some(ref detail_text) = details {
             ui.add_space(8.0);
-            let button_text = if show_details { "Hide Details" } else { "Show Details" };
+            let button_text = if show_details {
+                "Hide Details"
+            } else {
+                "Show Details"
+            };
             if ui.button(button_text).clicked() {
                 self.state = AppState::Error {
                     message: message.clone(),
@@ -412,9 +409,11 @@ impl GraftApp {
 
             if show_details {
                 ui.add_space(8.0);
-                egui::ScrollArea::vertical().max_height(100.0).show(ui, |ui| {
-                    ui.label(egui::RichText::new(detail_text).monospace().small());
-                });
+                egui::ScrollArea::vertical()
+                    .max_height(100.0)
+                    .show(ui, |ui| {
+                        ui.label(egui::RichText::new(detail_text).monospace().small());
+                    });
             }
         }
 
@@ -448,13 +447,21 @@ impl eframe::App for GraftApp {
             match state {
                 AppState::Welcome => self.render_welcome(ui),
                 AppState::FolderSelected { path } => self.render_folder_selected(ui, path),
-                AppState::Applying { current_file, progress, total, completed, .. } => {
-                    self.render_applying(ui, current_file, progress, total, completed)
+                AppState::Applying {
+                    current_file,
+                    progress,
+                    total,
+                    completed,
+                    ..
+                } => self.render_applying(ui, current_file, progress, total, completed),
+                AppState::Success { path, files_patched } => {
+                    self.render_success(ctx, ui, &path, files_patched)
                 }
-                AppState::Success { path, files_patched } => self.render_success(ctx, ui, &path, files_patched),
-                AppState::Error { message, details, show_details } => {
-                    self.render_error(ctx, ui, message, details, show_details)
-                }
+                AppState::Error {
+                    message,
+                    details,
+                    show_details,
+                } => self.render_error(ctx, ui, message, details, show_details),
             }
         });
     }
@@ -471,13 +478,13 @@ pub fn run(patch_data: Option<&[u8]>) -> eframe::Result<()> {
 
     let app: GraftApp = if let Some(data) = patch_data {
         // Extract patch data and create real app
-        match extract_and_load_patch(data) {
-            Ok((patch_dir, manifest)) => GraftApp::new(patch_dir, manifest),
+        match PatchRunner::extract(data) {
+            Ok(runner) => GraftApp::new(runner),
             Err(e) => {
                 eprintln!("Failed to load embedded patch: {}", e);
                 return Err(eframe::Error::AppCreation(Box::new(std::io::Error::new(
                     std::io::ErrorKind::InvalidData,
-                    e,
+                    e.to_string(),
                 ))));
             }
         }
@@ -490,31 +497,4 @@ pub fn run(patch_data: Option<&[u8]>) -> eframe::Result<()> {
         cc.egui_ctx.set_visuals(egui::Visuals::light());
         Ok(Box::new(app))
     }))
-}
-
-/// Extract patch data from compressed tar archive and load manifest
-fn extract_and_load_patch(data: &[u8]) -> Result<(PathBuf, Manifest), String> {
-    use flate2::read::GzDecoder;
-    use tar::Archive;
-
-    // Create temp directory for extracted patch
-    let temp_dir = tempfile::tempdir()
-        .map_err(|e| format!("Failed to create temp directory: {}", e))?;
-
-    // Decompress and extract
-    let decoder = GzDecoder::new(data);
-    let mut archive = Archive::new(decoder);
-    archive
-        .unpack(temp_dir.path())
-        .map_err(|e| format!("Failed to extract patch archive: {}", e))?;
-
-    // Load manifest
-    let manifest_path = temp_dir.path().join(MANIFEST_FILENAME);
-    let manifest = Manifest::load(&manifest_path)
-        .map_err(|e| format!("Failed to load manifest: {}", e))?;
-
-    // Keep temp_dir alive by converting to path (will be cleaned up on process exit)
-    let patch_dir = temp_dir.keep();
-
-    Ok((patch_dir, manifest))
 }
