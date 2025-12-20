@@ -45,16 +45,16 @@ impl PatchInfo {
             deletions,
         }
     }
-}
 
-/// Mock patch info for demo mode
-pub fn mock_info() -> PatchInfo {
-    PatchInfo {
-        version: 1,
-        entry_count: 42,
-        patches: 35,
-        additions: 5,
-        deletions: 2,
+    /// Mock patch info for demo mode
+    pub fn mock() -> Self {
+        PatchInfo {
+            version: 1,
+            entry_count: 42,
+            patches: 35,
+            additions: 5,
+            deletions: 2,
+        }
     }
 }
 
@@ -101,67 +101,40 @@ impl PatchRunner {
         &self.info
     }
 
-    /// Get the manifest
-    pub fn manifest(&self) -> &Manifest {
-        &self.manifest
-    }
-
-    /// Get the patch directory path
-    pub fn patch_dir(&self) -> &Path {
-        &self.patch_dir
-    }
-
     /// Apply patch to target directory with progress callback
     ///
     /// The callback is invoked for each progress event. Returns Ok(()) on success,
     /// or the first error encountered.
-    #[allow(dead_code)] // Used by CLI when embedded_patch feature is enabled
-    pub fn apply<F>(&self, target: &Path, on_progress: F) -> Result<(), PatchError>
+    pub fn apply<F>(&self, target: &Path, mut on_progress: F) -> Result<(), PatchError>
     where
         F: FnMut(ProgressEvent),
     {
-        apply_patch(&self.manifest, &self.patch_dir, target, on_progress)
-    }
-}
+        let total = self.manifest.entries.len();
 
-/// Apply a patch with progress callback (standalone function for use from threads)
-///
-/// This function can be used directly when you need to apply a patch from a
-/// background thread and have already cloned the necessary data.
-pub fn apply_patch<F>(
-    manifest: &Manifest,
-    patch_dir: &Path,
-    target: &Path,
-    mut on_progress: F,
-) -> Result<(), PatchError>
-where
-    F: FnMut(ProgressEvent),
-{
-    let total = manifest.entries.len();
+        for (i, entry) in self.manifest.entries.iter().enumerate() {
+            let file = entry.file().to_string();
 
-    for (i, entry) in manifest.entries.iter().enumerate() {
-        let file = entry.file().to_string();
+            on_progress(ProgressEvent::Processing {
+                file: file.clone(),
+                index: i,
+                total,
+            });
 
-        on_progress(ProgressEvent::Processing {
-            file: file.clone(),
-            index: i,
-            total,
+            if let Err(e) = apply_entry(entry, target, &self.patch_dir) {
+                on_progress(ProgressEvent::Error {
+                    message: format!("Failed to apply patch to '{}'", file),
+                    details: Some(e.to_string()),
+                });
+                return Err(e);
+            }
+        }
+
+        on_progress(ProgressEvent::Done {
+            files_patched: total,
         });
 
-        if let Err(e) = apply_entry(entry, target, patch_dir) {
-            on_progress(ProgressEvent::Error {
-                message: format!("Failed to apply patch to '{}'", file),
-                details: Some(e.to_string()),
-            });
-            return Err(e);
-        }
+        Ok(())
     }
-
-    on_progress(ProgressEvent::Done {
-        files_patched: total,
-    });
-
-    Ok(())
 }
 
 /// Errors specific to the patch runner

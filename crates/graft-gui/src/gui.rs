@@ -1,4 +1,4 @@
-use crate::runner::{apply_patch, mock_info, PatchInfo, PatchRunner, ProgressEvent};
+use crate::runner::{PatchInfo, PatchRunner, PatchRunnerError, ProgressEvent};
 use eframe::egui;
 use std::path::PathBuf;
 use std::sync::mpsc;
@@ -53,8 +53,8 @@ impl From<ProgressEvent> for ProgressMessage {
 pub struct GraftApp {
     state: AppState,
     patch_info: PatchInfo,
-    /// Patch runner (None for demo mode)
-    runner: Option<PatchRunner>,
+    /// Raw patch data (None for demo mode, worker thread creates runner from this)
+    patch_data: Option<Vec<u8>>,
     /// Channel for receiving progress updates from worker thread
     progress_rx: Option<mpsc::Receiver<ProgressMessage>>,
     /// Demo mode flag
@@ -68,25 +68,32 @@ impl GraftApp {
     pub fn demo() -> Self {
         GraftApp {
             state: AppState::Welcome,
-            patch_info: mock_info(),
-            runner: None,
+            patch_info: PatchInfo::mock(),
+            patch_data: None,
             progress_rx: None,
             demo_mode: true,
             path_input: String::new(),
         }
     }
 
-    /// Create a new app with a patch runner
-    pub fn new(runner: PatchRunner) -> Self {
+    /// Create a new app with patch data
+    ///
+    /// Extracts the patch once to get PatchInfo for display, then stores
+    /// the raw data for the worker thread to use when applying.
+    pub fn new(patch_data: Vec<u8>) -> Result<Self, PatchRunnerError> {
+        // Extract once to get patch info for the Welcome screen
+        let runner = PatchRunner::extract(&patch_data)?;
         let patch_info = runner.info().clone();
-        GraftApp {
+        // Runner is dropped here - worker thread will create its own
+
+        Ok(GraftApp {
             state: AppState::Welcome,
             patch_info,
-            runner: Some(runner),
+            patch_data: Some(patch_data),
             progress_rx: None,
             demo_mode: false,
             path_input: String::new(),
-        }
+        })
     }
 
     fn select_folder(&mut self) {
@@ -111,11 +118,8 @@ impl GraftApp {
         let (tx, rx) = mpsc::channel();
         self.progress_rx = Some(rx);
 
-        // Clone what we need for the worker thread
-        let runner = self.runner.as_ref().unwrap();
-        let patch_dir = runner.patch_dir().to_path_buf();
-        let manifest = runner.manifest().clone();
-        let total = manifest.entries.len();
+        let patch_data = self.patch_data.clone().unwrap();
+        let total = self.patch_info.entry_count;
 
         self.state = AppState::Applying {
             path: target_path.clone(),
@@ -125,9 +129,20 @@ impl GraftApp {
             completed: 0,
         };
 
-        // Spawn worker thread that uses shared apply logic
+        // Worker thread creates and owns its own runner
         thread::spawn(move || {
-            let _ = apply_patch(&manifest, &patch_dir, &target_path, |event| {
+            let runner = match PatchRunner::extract(&patch_data) {
+                Ok(r) => r,
+                Err(e) => {
+                    let _ = tx.send(ProgressMessage::Error {
+                        message: "Failed to extract patch".to_string(),
+                        details: Some(e.to_string()),
+                    });
+                    return;
+                }
+            };
+
+            let _ = runner.apply(&target_path, |event| {
                 let _ = tx.send(ProgressMessage::from(event));
             });
         });
@@ -477,9 +492,8 @@ pub fn run(patch_data: Option<&[u8]>) -> eframe::Result<()> {
     };
 
     let app: GraftApp = if let Some(data) = patch_data {
-        // Extract patch data and create real app
-        match PatchRunner::extract(data) {
-            Ok(runner) => GraftApp::new(runner),
+        match GraftApp::new(data.to_vec()) {
+            Ok(app) => app,
             Err(e) => {
                 eprintln!("Failed to load embedded patch: {}", e);
                 return Err(eframe::Error::AppCreation(Box::new(std::io::Error::new(
