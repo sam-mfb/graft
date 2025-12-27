@@ -65,6 +65,49 @@ impl Default for Manifest {
     }
 }
 
+/// Patch metadata extracted from manifest
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PatchInfo {
+    pub version: u32,
+    pub entry_count: usize,
+    pub patches: usize,
+    pub additions: usize,
+    pub deletions: usize,
+}
+
+impl PatchInfo {
+    pub fn from_manifest(manifest: &Manifest) -> Self {
+        let mut patches = 0;
+        let mut additions = 0;
+        let mut deletions = 0;
+        for entry in &manifest.entries {
+            match entry {
+                ManifestEntry::Patch { .. } => patches += 1,
+                ManifestEntry::Add { .. } => additions += 1,
+                ManifestEntry::Delete { .. } => deletions += 1,
+            }
+        }
+        PatchInfo {
+            version: manifest.version,
+            entry_count: manifest.entries.len(),
+            patches,
+            additions,
+            deletions,
+        }
+    }
+
+    /// Mock patch info for demo mode
+    pub fn mock() -> Self {
+        PatchInfo {
+            version: 1,
+            entry_count: 42,
+            patches: 35,
+            additions: 5,
+            deletions: 2,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

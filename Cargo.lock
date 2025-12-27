@@ -1328,6 +1328,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "graft-builder"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "flate2",
+ "graft-core",
+ "tar",
+ "tempfile",
+]
+
+[[package]]
 name = "graft-core"
 version = "0.1.0"
 dependencies = [
