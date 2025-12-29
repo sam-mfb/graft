@@ -1,6 +1,6 @@
 use flate2::write::GzEncoder;
 use flate2::Compression;
-use graft_core::patch::{DIFFS_DIR, FILES_DIR, MANIFEST_FILENAME};
+use graft_core::patch;
 use std::fs::{self, File};
 use std::io::{self, Write};
 use std::path::Path;
@@ -22,19 +22,19 @@ pub fn create_archive(patch_dir: &Path) -> io::Result<Vec<u8>> {
         let mut archive = Builder::new(encoder);
 
         // Add manifest.json (required)
-        let manifest_path = patch_dir.join(MANIFEST_FILENAME);
-        archive.append_path_with_name(&manifest_path, MANIFEST_FILENAME)?;
+        let manifest_path = patch_dir.join(patch::MANIFEST_FILENAME);
+        archive.append_path_with_name(&manifest_path, patch::MANIFEST_FILENAME)?;
 
         // Add diffs directory if it exists
-        let diffs_path = patch_dir.join(DIFFS_DIR);
+        let diffs_path = patch_dir.join(patch::DIFFS_DIR);
         if diffs_path.is_dir() {
-            add_directory_contents(&mut archive, &diffs_path, DIFFS_DIR)?;
+            add_directory_contents(&mut archive, &diffs_path, patch::DIFFS_DIR)?;
         }
 
         // Add files directory if it exists
-        let files_path = patch_dir.join(FILES_DIR);
+        let files_path = patch_dir.join(patch::FILES_DIR);
         if files_path.is_dir() {
-            add_directory_contents(&mut archive, &files_path, FILES_DIR)?;
+            add_directory_contents(&mut archive, &files_path, patch::FILES_DIR)?;
         }
 
         // Finish the archive

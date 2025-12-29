@@ -1,5 +1,5 @@
 use flate2::read::GzDecoder;
-use graft_core::patch::{apply::apply_entry, PatchError, MANIFEST_FILENAME};
+use graft_core::patch::{self, PatchError};
 use graft_core::utils::manifest::Manifest;
 use std::path::{Path, PathBuf};
 use tar::Archive;
@@ -38,7 +38,7 @@ impl PatchRunner {
             .map_err(|e| PatchRunnerError::ExtractionFailed(format!("Failed to extract patch archive: {}", e)))?;
 
         // Load manifest
-        let manifest_path = temp_dir.path().join(MANIFEST_FILENAME);
+        let manifest_path = temp_dir.path().join(patch::MANIFEST_FILENAME);
         let manifest = Manifest::load(&manifest_path)
             .map_err(|e| PatchRunnerError::ManifestLoadFailed(format!("Failed to load manifest: {}", e)))?;
 
@@ -70,7 +70,7 @@ impl PatchRunner {
                 total,
             });
 
-            if let Err(e) = apply_entry(entry, target, &self.patch_dir) {
+            if let Err(e) = patch::apply::apply_entry(entry, target, &self.patch_dir) {
                 on_progress(ProgressEvent::Error {
                     message: format!("Failed to apply patch to '{}'", file),
                     details: Some(e.to_string()),

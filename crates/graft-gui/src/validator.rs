@@ -1,5 +1,5 @@
 use flate2::read::GzDecoder;
-use graft_core::patch::MANIFEST_FILENAME;
+use graft_core::patch;
 use graft_core::utils::manifest::Manifest;
 use std::io::Read;
 use tar::Archive;
@@ -30,7 +30,7 @@ impl PatchValidator {
                 PatchValidationError::DecompressionFailed(format!("Failed to read path: {}", e))
             })?;
 
-            if path.ends_with(MANIFEST_FILENAME) {
+            if path.ends_with(patch::MANIFEST_FILENAME) {
                 let mut content = String::new();
                 entry.read_to_string(&mut content).map_err(|e| {
                     PatchValidationError::ManifestInvalid(format!("Failed to read manifest: {}", e))

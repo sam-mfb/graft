@@ -1,6 +1,6 @@
-use crate::archive::{create_archive, write_archive};
+use crate::archive;
 use crate::error::BuildError;
-use graft_core::patch::validate_patch_dir;
+use graft_core::patch;
 use graft_core::utils::manifest::PatchInfo;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -17,7 +17,7 @@ use std::process::Command;
 /// Path to the built executable on success.
 pub fn build(patch_dir: &Path, output_dir: &Path, name: Option<&str>) -> Result<PathBuf, BuildError> {
     // Step 1: Validate patch directory
-    let manifest = validate_patch_dir(patch_dir)?;
+    let manifest = patch::validate_patch_dir(patch_dir)?;
     let patch_info = PatchInfo::from_manifest(&manifest);
     let patcher_name = name.unwrap_or("patcher");
 
@@ -38,9 +38,9 @@ pub fn build(patch_dir: &Path, output_dir: &Path, name: Option<&str>) -> Result<
     // Step 3: Create the archive
     println!("Creating patch archive...");
     let archive_data =
-        create_archive(patch_dir).map_err(BuildError::ArchiveCreationFailed)?;
+        archive::create_archive(patch_dir).map_err(BuildError::ArchiveCreationFailed)?;
 
-    write_archive(&archive_data, &archive_path)
+    archive::write_archive(&archive_data, &archive_path)
         .map_err(BuildError::ArchiveCreationFailed)?;
 
     // Step 4: Run cargo build
