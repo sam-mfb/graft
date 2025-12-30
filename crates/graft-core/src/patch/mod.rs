@@ -14,6 +14,8 @@ pub struct Progress<'a> {
     pub index: usize,
     /// Total number of entries
     pub total: usize,
+    /// Action being performed (e.g., "Patching", "Adding", "Deleting")
+    pub action: &'static str,
 }
 
 // Re-export public items

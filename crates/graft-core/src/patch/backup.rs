@@ -27,11 +27,17 @@ where
 {
     let total = entries.len();
     for (index, entry) in entries.iter().enumerate() {
+        let action = match entry {
+            ManifestEntry::Patch { .. } | ManifestEntry::Delete { .. } => "Backing up",
+            ManifestEntry::Add { .. } => "Skipping",
+        };
+
         if let Some(ref mut callback) = on_progress {
             callback(Progress {
                 file: entry.file(),
                 index,
                 total,
+                action,
             });
         }
         match entry {
@@ -74,11 +80,18 @@ where
 {
     let total = applied.len();
     for (index, entry) in applied.iter().enumerate() {
+        let action = match entry {
+            ManifestEntry::Patch { .. } => "Restoring",
+            ManifestEntry::Add { .. } => "Removing",
+            ManifestEntry::Delete { .. } => "Restoring",
+        };
+
         if let Some(ref mut callback) = on_progress {
             callback(Progress {
                 file: entry.file(),
                 index,
                 total,
+                action,
             });
         }
         match entry {

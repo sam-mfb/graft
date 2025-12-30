@@ -115,11 +115,18 @@ where
     let mut applied = Vec::new();
 
     for (index, entry) in entries.iter().enumerate() {
+        let action = match entry {
+            ManifestEntry::Patch { .. } => "Patching",
+            ManifestEntry::Add { .. } => "Adding",
+            ManifestEntry::Delete { .. } => "Deleting",
+        };
+
         if let Some(ref mut callback) = on_progress {
             callback(Progress {
                 file: entry.file(),
                 index,
                 total,
+                action,
             });
         }
 

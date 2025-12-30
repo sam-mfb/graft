@@ -23,18 +23,18 @@ pub fn run(target_dir: &Path, patch_dir: &Path) -> Result<(), PatchError> {
 
     // Validate all entries before making any changes
     validate_entries(&manifest.entries, target_dir, Some(|p: Progress| {
-        println!("Validating [{}/{}]: {}", p.index + 1, p.total, p.file);
+        println!("{} [{}/{}]: {}", p.action, p.index + 1, p.total, p.file);
     }))?;
 
     // Backup all files that will be modified/deleted
     let backup_dir = target_dir.join(BACKUP_DIR);
     backup_entries(&manifest.entries, target_dir, &backup_dir, Some(|p: Progress| {
-        println!("Backing up [{}/{}]: {}", p.index + 1, p.total, p.file);
+        println!("{} [{}/{}]: {}", p.action, p.index + 1, p.total, p.file);
     }))?;
 
     // Apply each entry with automatic rollback on failure
     apply_entries(&manifest.entries, target_dir, patch_dir, &backup_dir, Some(|p: Progress| {
-        println!("Applying [{}/{}]: {}", p.index + 1, p.total, p.file);
+        println!("{} [{}/{}]: {}", p.action, p.index + 1, p.total, p.file);
     }))?;
 
     Ok(())
