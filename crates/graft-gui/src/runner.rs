@@ -34,13 +34,16 @@ pub enum ProgressEvent {
         file: String,
         index: usize,
         total: usize,
-        action: String,
+        action: ProgressAction,
     },
     /// Patch completed successfully
     Done { files_patched: usize },
     /// An error occurred
     Error { message: String, details: Option<String> },
 }
+
+// Re-export ProgressAction for consumers
+pub use graft_core::patch::ProgressAction;
 
 /// Core patch runner that handles extraction and application
 pub struct PatchRunner {
@@ -100,7 +103,7 @@ impl PatchRunner {
                 file: p.file.to_owned(),
                 index: p.index,
                 total: p.total,
-                action: p.action.to_owned(),
+                action: p.action,
             });
         };
 

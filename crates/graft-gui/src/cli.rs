@@ -1,7 +1,21 @@
-use crate::runner::{PatchRunner, ProgressEvent};
+use crate::runner::{PatchRunner, ProgressAction, ProgressEvent};
 use crate::validator::PatchValidator;
 use std::io::{self, Write};
 use std::path::Path;
+
+fn format_action(action: ProgressAction) -> &'static str {
+    match action {
+        ProgressAction::Validating => "Validating",
+        ProgressAction::CheckingNotExists => "Checking",
+        ProgressAction::BackingUp => "Backing up",
+        ProgressAction::Skipping => "Skipping",
+        ProgressAction::Patching => "Patching",
+        ProgressAction::Adding => "Adding",
+        ProgressAction::Deleting => "Deleting",
+        ProgressAction::Restoring => "Restoring",
+        ProgressAction::Removing => "Removing",
+    }
+}
 
 /// Run in headless (CLI) mode with embedded patch data
 pub fn run_headless(
@@ -55,7 +69,7 @@ pub fn run_headless(
             total,
             action,
         } => {
-            println!("  [{}/{}] {}: {}", index + 1, total, action, file);
+            println!("  [{}/{}] {}: {}", index + 1, total, format_action(action), file);
         }
         ProgressEvent::Done { files_patched } => {
             println!("\n{} files processed.", files_patched);

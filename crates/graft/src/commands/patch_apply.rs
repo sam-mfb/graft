@@ -1,10 +1,24 @@
 use std::path::Path;
 
 use graft_core::patch::{
-    apply_entries, backup_entries, validate_entries, PatchError, Progress, BACKUP_DIR,
-    MANIFEST_FILENAME,
+    apply_entries, backup_entries, validate_entries, PatchError, Progress, ProgressAction,
+    BACKUP_DIR, MANIFEST_FILENAME,
 };
 use graft_core::utils::manifest::Manifest;
+
+fn format_action(action: ProgressAction) -> &'static str {
+    match action {
+        ProgressAction::Validating => "Validating",
+        ProgressAction::CheckingNotExists => "Checking",
+        ProgressAction::BackingUp => "Backing up",
+        ProgressAction::Skipping => "Skipping",
+        ProgressAction::Patching => "Patching",
+        ProgressAction::Adding => "Adding",
+        ProgressAction::Deleting => "Deleting",
+        ProgressAction::Restoring => "Restoring",
+        ProgressAction::Removing => "Removing",
+    }
+}
 
 /// Apply a patch to a target directory.
 ///
@@ -23,18 +37,18 @@ pub fn run(target_dir: &Path, patch_dir: &Path) -> Result<(), PatchError> {
 
     // Validate all entries before making any changes
     validate_entries(&manifest.entries, target_dir, Some(|p: Progress| {
-        println!("{} [{}/{}]: {}", p.action, p.index + 1, p.total, p.file);
+        println!("{} [{}/{}]: {}", format_action(p.action), p.index + 1, p.total, p.file);
     }))?;
 
     // Backup all files that will be modified/deleted
     let backup_dir = target_dir.join(BACKUP_DIR);
     backup_entries(&manifest.entries, target_dir, &backup_dir, Some(|p: Progress| {
-        println!("{} [{}/{}]: {}", p.action, p.index + 1, p.total, p.file);
+        println!("{} [{}/{}]: {}", format_action(p.action), p.index + 1, p.total, p.file);
     }))?;
 
     // Apply each entry with automatic rollback on failure
     apply_entries(&manifest.entries, target_dir, patch_dir, &backup_dir, Some(|p: Progress| {
-        println!("{} [{}/{}]: {}", p.action, p.index + 1, p.total, p.file);
+        println!("{} [{}/{}]: {}", format_action(p.action), p.index + 1, p.total, p.file);
     }))?;
 
     Ok(())

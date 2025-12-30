@@ -5,6 +5,29 @@ mod error;
 pub mod validate;
 pub mod verify;
 
+/// Action being performed on a file during progress.
+///
+/// Consumers can format this enum however they want for display or localization.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProgressAction {
+    // Validation phase
+    Validating,
+    CheckingNotExists,
+
+    // Backup phase
+    BackingUp,
+    Skipping,
+
+    // Apply phase
+    Patching,
+    Adding,
+    Deleting,
+
+    // Rollback phase
+    Restoring,
+    Removing,
+}
+
 /// Progress information passed to callbacks during batch operations.
 #[derive(Debug, Clone)]
 pub struct Progress<'a> {
@@ -14,8 +37,8 @@ pub struct Progress<'a> {
     pub index: usize,
     /// Total number of entries
     pub total: usize,
-    /// Action being performed (e.g., "Patching", "Adding", "Deleting")
-    pub action: &'static str,
+    /// Action being performed
+    pub action: ProgressAction,
 }
 
 // Re-export public items

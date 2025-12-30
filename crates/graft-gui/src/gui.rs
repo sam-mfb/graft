@@ -1,9 +1,23 @@
-use crate::runner::{PatchRunner, Phase, ProgressEvent};
+use crate::runner::{PatchRunner, Phase, ProgressAction, ProgressEvent};
 use crate::validator::{PatchInfo, PatchValidationError, PatchValidator};
 use eframe::egui;
 use std::path::PathBuf;
 use std::sync::mpsc;
 use std::thread;
+
+fn format_action(action: ProgressAction) -> &'static str {
+    match action {
+        ProgressAction::Validating => "Validating",
+        ProgressAction::CheckingNotExists => "Checking",
+        ProgressAction::BackingUp => "Backing up",
+        ProgressAction::Skipping => "Skipping",
+        ProgressAction::Patching => "Patching",
+        ProgressAction::Adding => "Adding",
+        ProgressAction::Deleting => "Deleting",
+        ProgressAction::Restoring => "Restoring",
+        ProgressAction::Removing => "Removing",
+    }
+}
 
 /// Application state machine states
 #[derive(Debug, Clone)]
@@ -198,7 +212,7 @@ impl GraftApp {
                         ..
                     } = &mut self.state
                     {
-                        log.push(format!("  [{}/{}] {}: {}", index + 1, total, action, file));
+                        log.push(format!("  [{}/{}] {}: {}", index + 1, total, format_action(action), file));
                         *phase_total = total;
                         // Progress: completed phases + current phase progress
                         let phase_progress = (index + 1) as f32 / total.max(1) as f32;

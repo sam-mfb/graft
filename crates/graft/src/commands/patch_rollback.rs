@@ -1,7 +1,21 @@
 use std::path::Path;
 
-use graft_core::patch::{rollback, validate_backup, PatchError, Progress, BACKUP_DIR};
+use graft_core::patch::{rollback, validate_backup, PatchError, Progress, ProgressAction, BACKUP_DIR};
 use graft_core::utils::manifest::Manifest;
+
+fn format_action(action: ProgressAction) -> &'static str {
+    match action {
+        ProgressAction::Validating => "Validating",
+        ProgressAction::CheckingNotExists => "Checking",
+        ProgressAction::BackingUp => "Backing up",
+        ProgressAction::Skipping => "Skipping",
+        ProgressAction::Patching => "Patching",
+        ProgressAction::Adding => "Adding",
+        ProgressAction::Deleting => "Deleting",
+        ProgressAction::Restoring => "Restoring",
+        ProgressAction::Removing => "Removing",
+    }
+}
 
 /// Rollback a previously applied patch using the backup directory.
 ///
@@ -22,13 +36,13 @@ pub fn run(target_dir: &Path, manifest_path: &Path) -> Result<(), PatchError> {
 
     // Validate backup integrity before rolling back
     validate_backup(&manifest.entries, &backup_dir, Some(|p: Progress| {
-        println!("{} [{}/{}]: {}", p.action, p.index + 1, p.total, p.file);
+        println!("{} [{}/{}]: {}", format_action(p.action), p.index + 1, p.total, p.file);
     }))?;
 
     // Rollback all entries (treat all as "applied")
     let entries: Vec<_> = manifest.entries.iter().collect();
     rollback(&entries, target_dir, &backup_dir, Some(|p: Progress| {
-        println!("{} [{}/{}]: {}", p.action, p.index + 1, p.total, p.file);
+        println!("{} [{}/{}]: {}", format_action(p.action), p.index + 1, p.total, p.file);
     }))?;
 
     Ok(())

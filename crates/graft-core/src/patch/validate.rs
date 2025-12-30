@@ -1,6 +1,6 @@
 use crate::patch::constants::{DIFFS_DIR, DIFF_EXTENSION, FILES_DIR, MANIFEST_FILENAME};
 use crate::patch::error::PatchError;
-use crate::patch::Progress;
+use crate::patch::{Progress, ProgressAction};
 use crate::utils::hash::hash_bytes;
 use crate::utils::manifest::{Manifest, ManifestEntry};
 use std::fs;
@@ -72,9 +72,9 @@ where
     let total = entries.len();
     for (index, entry) in entries.iter().enumerate() {
         let action = match entry {
-            ManifestEntry::Patch { .. } => "Validating",
-            ManifestEntry::Add { .. } => "Checking not exists",
-            ManifestEntry::Delete { .. } => "Validating",
+            ManifestEntry::Patch { .. } => ProgressAction::Validating,
+            ManifestEntry::Add { .. } => ProgressAction::CheckingNotExists,
+            ManifestEntry::Delete { .. } => ProgressAction::Validating,
         };
 
         if let Some(ref mut callback) = on_progress {
@@ -173,9 +173,9 @@ where
     let total = entries.len();
     for (index, entry) in entries.iter().enumerate() {
         let action = match entry {
-            ManifestEntry::Patch { .. } => "Validating backup",
-            ManifestEntry::Add { .. } => "Skipping",
-            ManifestEntry::Delete { .. } => "Validating backup",
+            ManifestEntry::Patch { .. } => ProgressAction::Validating,
+            ManifestEntry::Add { .. } => ProgressAction::Skipping,
+            ManifestEntry::Delete { .. } => ProgressAction::Validating,
         };
 
         if let Some(ref mut callback) = on_progress {

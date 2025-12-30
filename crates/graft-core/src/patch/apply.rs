@@ -3,7 +3,7 @@ use std::path::Path;
 
 use crate::patch::backup::rollback;
 use crate::patch::verify::verify_entry;
-use crate::patch::{PatchError, Progress, DIFFS_DIR, DIFF_EXTENSION, FILES_DIR};
+use crate::patch::{PatchError, Progress, ProgressAction, DIFFS_DIR, DIFF_EXTENSION, FILES_DIR};
 use crate::utils::diff::apply_diff;
 use crate::utils::manifest::ManifestEntry;
 
@@ -116,9 +116,9 @@ where
 
     for (index, entry) in entries.iter().enumerate() {
         let action = match entry {
-            ManifestEntry::Patch { .. } => "Patching",
-            ManifestEntry::Add { .. } => "Adding",
-            ManifestEntry::Delete { .. } => "Deleting",
+            ManifestEntry::Patch { .. } => ProgressAction::Patching,
+            ManifestEntry::Add { .. } => ProgressAction::Adding,
+            ManifestEntry::Delete { .. } => ProgressAction::Deleting,
         };
 
         if let Some(ref mut callback) = on_progress {

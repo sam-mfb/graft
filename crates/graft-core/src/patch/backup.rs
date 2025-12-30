@@ -3,8 +3,8 @@
 use std::fs;
 use std::path::Path;
 
-use crate::patch::Progress;
 use crate::patch::PatchError;
+use crate::patch::{Progress, ProgressAction};
 use crate::utils::file_ops::{backup_file, restore_file};
 use crate::utils::manifest::ManifestEntry;
 
@@ -28,8 +28,8 @@ where
     let total = entries.len();
     for (index, entry) in entries.iter().enumerate() {
         let action = match entry {
-            ManifestEntry::Patch { .. } | ManifestEntry::Delete { .. } => "Backing up",
-            ManifestEntry::Add { .. } => "Skipping",
+            ManifestEntry::Patch { .. } | ManifestEntry::Delete { .. } => ProgressAction::BackingUp,
+            ManifestEntry::Add { .. } => ProgressAction::Skipping,
         };
 
         if let Some(ref mut callback) = on_progress {
@@ -81,9 +81,9 @@ where
     let total = applied.len();
     for (index, entry) in applied.iter().enumerate() {
         let action = match entry {
-            ManifestEntry::Patch { .. } => "Restoring",
-            ManifestEntry::Add { .. } => "Removing",
-            ManifestEntry::Delete { .. } => "Restoring",
+            ManifestEntry::Patch { .. } => ProgressAction::Restoring,
+            ManifestEntry::Add { .. } => ProgressAction::Removing,
+            ManifestEntry::Delete { .. } => ProgressAction::Restoring,
         };
 
         if let Some(ref mut callback) = on_progress {
