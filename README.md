@@ -76,10 +76,10 @@ This will:
 
 Rollback a previously applied patch:
 ```
-graft patch rollback <target-dir> <manifest-path>
+graft patch rollback <target-dir> <manifest-path> [--force]
 ```
 
-This restores files from `.patch-backup/` to their original state.
+This restores files from `.patch-backup/` to their original state. The `--force` flag skips validation of target files (use when files have been modified since patching).
 
 ## GUI Patcher
 
@@ -94,10 +94,26 @@ cargo run -p graft-gui -- demo
 
 ### Headless Mode
 
-When built with embedded patch data, supports CLI mode:
+When built with embedded patch data, supports CLI mode for scripting:
+
+Apply a patch:
 ```
-./patcher headless <target-dir> [-y]
+./patcher headless apply <target-dir> [-y]
 ```
+
+Rollback a previously applied patch:
+```
+./patcher headless rollback <target-dir> [--force]
+```
+
+The `--force` flag skips validation of target files (use when files have been modified since patching).
+
+### Features
+
+- **Pre-validation**: Validates target files before applying (both GUI and headless)
+- **Already-patched detection**: Detects if folder was previously patched and offers rollback
+- **Automatic rollback**: On apply failure, automatically restores from backup
+- **Backup management**: After rollback, option to delete or keep backup files
 
 ## Building Self-Contained Patchers
 
@@ -123,6 +139,7 @@ graft patch create original/ modified/ my-patch/
 graft-builder build my-patch/ -o dist/ -n my-patcher
 
 # The resulting binary can be distributed and run:
-./dist/my-patcher              # GUI mode
-./dist/my-patcher headless /target -y  # CLI mode
+./dist/my-patcher                              # GUI mode
+./dist/my-patcher headless apply /target -y   # CLI mode (apply)
+./dist/my-patcher headless rollback /target   # CLI mode (rollback)
 ```

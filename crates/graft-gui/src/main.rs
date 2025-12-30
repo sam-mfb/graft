@@ -23,7 +23,8 @@
 //!
 //! - **GUI mode** (default): `graft-gui` - graphical interface
 //! - **Demo mode**: `graft-gui demo` - GUI with mock data for development
-//! - **Headless mode**: `graft-gui headless <path>` - CLI-only for scripting
+//! - **Headless apply**: `graft-gui headless apply <path>` - CLI-only for scripting
+//! - **Headless rollback**: `graft-gui headless rollback <path>` - undo a patch
 
 #[cfg(feature = "embedded_patch")]
 mod cli;
@@ -49,12 +50,31 @@ enum Command {
 
     /// Run in headless (CLI) mode instead of GUI
     Headless {
+        #[command(subcommand)]
+        action: HeadlessAction,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum HeadlessAction {
+    /// Apply the patch to a target directory
+    Apply {
         /// Target directory to apply the patch to
         path: PathBuf,
 
         /// Skip confirmation prompt
         #[arg(short = 'y', long)]
         yes: bool,
+    },
+
+    /// Rollback a previously applied patch
+    Rollback {
+        /// Target directory to rollback
+        path: PathBuf,
+
+        /// Force rollback even if files have been modified
+        #[arg(short, long)]
+        force: bool,
     },
 }
 
@@ -63,7 +83,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match args.command {
         Some(Command::Demo) => run_gui(true),
-        Some(Command::Headless { path, yes }) => run_headless(&path, yes),
+        Some(Command::Headless { action }) => match action {
+            HeadlessAction::Apply { path, yes } => run_headless(&path, yes),
+            HeadlessAction::Rollback { path, force } => run_rollback(&path, force),
+        },
         None => run_gui(false),
     }
 }
@@ -103,6 +126,23 @@ fn run_headless(target_path: &PathBuf, skip_confirm: bool) -> Result<(), Box<dyn
     #[cfg(not(feature = "embedded_patch"))]
     {
         let _ = (target_path, skip_confirm); // Suppress unused warnings
+        eprintln!("Error: No embedded patch data available.");
+        eprintln!("Headless mode requires a patcher built with graft-builder.");
+        std::process::exit(1);
+    }
+}
+
+/// Run rollback in headless (CLI) mode
+fn run_rollback(target_path: &PathBuf, force: bool) -> Result<(), Box<dyn std::error::Error>> {
+    #[cfg(feature = "embedded_patch")]
+    {
+        const PATCH_DATA: &[u8] = include_bytes!(env!("GRAFT_PATCH_ARCHIVE"));
+        return cli::run_rollback(PATCH_DATA, target_path, force);
+    }
+
+    #[cfg(not(feature = "embedded_patch"))]
+    {
+        let _ = (target_path, force); // Suppress unused warnings
         eprintln!("Error: No embedded patch data available.");
         eprintln!("Headless mode requires a patcher built with graft-builder.");
         std::process::exit(1);
