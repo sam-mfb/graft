@@ -690,6 +690,13 @@ impl GraftApp {
         Self::render_log(ui, log);
         ui.add_space(8.0);
 
+        ui.label(
+            egui::RichText::new("To rollback later, relaunch this patcher and select the same folder.")
+                .small()
+                .color(egui::Color32::GRAY),
+        );
+        ui.add_space(8.0);
+
         ui.horizontal(|ui| {
             if ui.button("Rollback").clicked() {
                 self.start_rollback(path.clone(), false);
