@@ -5,45 +5,22 @@ use std::fs::{self, File};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use tar::Builder;
-use tempfile::NamedTempFile;
-
-/// Storage for an archive file - either temp or at a fixed path
-enum ArchiveStorage {
-    Temp(NamedTempFile),
-    Fixed(PathBuf),
-}
 
 /// An archive file that cleans itself up when dropped.
 ///
 /// This type implements RAII - the archive file is automatically
 /// deleted when the `ArchiveFile` goes out of scope.
 pub struct ArchiveFile {
-    storage: ArchiveStorage,
+    path: PathBuf,
 }
 
 impl ArchiveFile {
-    /// Create a tar.gz archive from a patch directory in a temporary location.
+    /// Create a tar.gz archive from a patch directory at a specific path.
     ///
     /// The archive will contain:
     /// - manifest.json (required)
     /// - diffs/*.diff (if present)
     /// - files/* (if present)
-    ///
-    /// Use `path()` to get the location of the archive.
-    pub fn create(patch_dir: &Path) -> io::Result<Self> {
-        let temp_file = tempfile::Builder::new()
-            .suffix(".tar.gz")
-            .tempfile()?;
-
-        let data = create_archive_bytes(patch_dir)?;
-        temp_file.as_file().write_all(&data)?;
-
-        Ok(Self {
-            storage: ArchiveStorage::Temp(temp_file),
-        })
-    }
-
-    /// Create a tar.gz archive from a patch directory at a specific path.
     ///
     /// The file will be deleted when this `ArchiveFile` is dropped.
     pub fn create_at(patch_dir: &Path, target_path: &Path) -> io::Result<Self> {
@@ -52,26 +29,14 @@ impl ArchiveFile {
         file.write_all(&data)?;
 
         Ok(Self {
-            storage: ArchiveStorage::Fixed(target_path.to_path_buf()),
+            path: target_path.to_path_buf(),
         })
-    }
-
-    /// Get the path to the archive file.
-    pub fn path(&self) -> &Path {
-        match &self.storage {
-            ArchiveStorage::Temp(temp_file) => temp_file.path(),
-            ArchiveStorage::Fixed(path) => path,
-        }
     }
 }
 
 impl Drop for ArchiveFile {
     fn drop(&mut self) {
-        // Temp files are cleaned up automatically by NamedTempFile
-        // Fixed files need manual cleanup
-        if let ArchiveStorage::Fixed(path) = &self.storage {
-            let _ = fs::remove_file(path);
-        }
+        let _ = fs::remove_file(&self.path);
     }
 }
 
