@@ -131,6 +131,66 @@ pub fn validate_entries(entries: &[ManifestEntry], target_dir: &Path) -> Result<
     Ok(())
 }
 
+/// Validate that backup directory contains expected files with correct hashes.
+///
+/// This should be called before rolling back to ensure the backup is intact.
+///
+/// Checks that:
+/// - For Patch entries: backup file MUST exist with hash matching original_hash
+/// - For Delete entries: if backup exists, hash MUST match original_hash (missing OK)
+/// - For Add entries: no backup expected
+pub fn validate_backup(entries: &[ManifestEntry], backup_dir: &Path) -> Result<(), PatchError> {
+    for entry in entries {
+        match entry {
+            ManifestEntry::Patch {
+                file,
+                original_hash,
+                ..
+            } => {
+                let backup_path = backup_dir.join(file);
+                if !backup_path.exists() {
+                    return Err(PatchError::RollbackFailed {
+                        reason: format!("backup file not found: {}", file),
+                    });
+                }
+                let data = fs::read(&backup_path).map_err(|e| PatchError::RollbackFailed {
+                    reason: format!("failed to read backup '{}': {}", file, e),
+                })?;
+                let actual_hash = hash_bytes(&data);
+                if &actual_hash != original_hash {
+                    return Err(PatchError::RollbackFailed {
+                        reason: format!(
+                            "backup hash mismatch for '{}': expected {}, got {}",
+                            file, original_hash, actual_hash
+                        ),
+                    });
+                }
+            }
+            ManifestEntry::Delete { file, original_hash } => {
+                let backup_path = backup_dir.join(file);
+                if backup_path.exists() {
+                    let data = fs::read(&backup_path).map_err(|e| PatchError::RollbackFailed {
+                        reason: format!("failed to read backup '{}': {}", file, e),
+                    })?;
+                    let actual_hash = hash_bytes(&data);
+                    if &actual_hash != original_hash {
+                        return Err(PatchError::RollbackFailed {
+                            reason: format!(
+                                "backup hash mismatch for '{}': expected {}, got {}",
+                                file, original_hash, actual_hash
+                            ),
+                        });
+                    }
+                }
+            }
+            ManifestEntry::Add { .. } => {
+                // No backup for added files
+            }
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
