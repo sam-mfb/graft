@@ -1,16 +1,41 @@
 use flate2::read::GzDecoder;
 use graft_core::patch::{self, PatchError, Progress};
 use graft_core::utils::manifest::Manifest;
+use std::cell::RefCell;
+use std::fmt;
 use std::path::{Path, PathBuf};
 use tar::Archive;
+
+/// Processing phases for orchestration
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Phase {
+    Validating,
+    BackingUp,
+    Applying,
+}
+
+impl fmt::Display for Phase {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Phase::Validating => write!(f, "Validating"),
+            Phase::BackingUp => write!(f, "Backing up"),
+            Phase::Applying => write!(f, "Applying"),
+        }
+    }
+}
 
 /// Progress event emitted during patch application
 #[derive(Debug, Clone)]
 pub enum ProgressEvent {
-    /// Starting to process a file
-    Processing { file: String, index: usize, total: usize },
-    /// File processed successfully
-    Processed { index: usize, total: usize },
+    /// A processing phase has started
+    PhaseStarted { phase: Phase },
+    /// Progress on a specific file operation (mapped from core Progress)
+    Operation {
+        file: String,
+        index: usize,
+        total: usize,
+        action: String,
+    },
     /// Patch completed successfully
     Done { files_patched: usize },
     /// An error occurred
@@ -60,55 +85,72 @@ impl PatchRunner {
     /// - Validation before making any changes
     /// - Backup of files that will be modified/deleted (to .patch-backup)
     /// - Atomic rollback on failure
-    pub fn apply<F>(&self, target: &Path, mut on_progress: F) -> Result<(), PatchError>
+    pub fn apply<F>(&self, target: &Path, on_progress: F) -> Result<(), PatchError>
     where
         F: FnMut(ProgressEvent),
     {
-        let total = self.manifest.entries.len();
-
-        // Validate all entries before making any changes
-        patch::validate_entries(&self.manifest.entries, target, None::<fn(Progress)>)?;
-
-        // Backup all files that will be modified/deleted
         let backup_dir = target.join(patch::BACKUP_DIR);
-        patch::backup_entries(&self.manifest.entries, target, &backup_dir, None::<fn(Progress)>)?;
 
-        // Apply each entry, verifying immediately after
-        let mut applied = Vec::new();
-        for (i, entry) in self.manifest.entries.iter().enumerate() {
-            let file = entry.file().to_string();
+        // Use RefCell to allow multiple closures to borrow on_progress
+        let on_progress = RefCell::new(on_progress);
 
-            on_progress(ProgressEvent::Processing {
-                file: file.clone(),
-                index: i,
-                total,
+        // Helper to convert core Progress to ProgressEvent::Operation
+        let send_operation = |p: Progress| {
+            (on_progress.borrow_mut())(ProgressEvent::Operation {
+                file: p.file.to_owned(),
+                index: p.index,
+                total: p.total,
+                action: p.action.to_owned(),
             });
+        };
 
-            if let Err(e) = patch::apply_entry(entry, target, &self.patch_dir) {
-                patch::rollback(&applied, target, &backup_dir, None::<fn(Progress)>)?;
-                on_progress(ProgressEvent::Error {
-                    message: format!("Failed to apply patch to '{}'", file),
-                    details: Some(e.to_string()),
-                });
-                return Err(e);
-            }
-
-            if let Err(e) = patch::verify_entry(entry, target) {
-                patch::rollback(&applied, target, &backup_dir, None::<fn(Progress)>)?;
-                on_progress(ProgressEvent::Error {
-                    message: format!("Verification failed for '{}'", file),
-                    details: Some(e.to_string()),
-                });
-                return Err(e);
-            }
-
-            applied.push(entry);
-
-            on_progress(ProgressEvent::Processed { index: i, total });
+        // Validation phase
+        (on_progress.borrow_mut())(ProgressEvent::PhaseStarted {
+            phase: Phase::Validating,
+        });
+        if let Err(e) = patch::validate_entries(&self.manifest.entries, target, Some(&send_operation))
+        {
+            (on_progress.borrow_mut())(ProgressEvent::Error {
+                message: "Validation failed".to_string(),
+                details: Some(e.to_string()),
+            });
+            return Err(e);
         }
 
-        on_progress(ProgressEvent::Done {
-            files_patched: total,
+        // Backup phase
+        (on_progress.borrow_mut())(ProgressEvent::PhaseStarted {
+            phase: Phase::BackingUp,
+        });
+        if let Err(e) =
+            patch::backup_entries(&self.manifest.entries, target, &backup_dir, Some(&send_operation))
+        {
+            (on_progress.borrow_mut())(ProgressEvent::Error {
+                message: "Backup failed".to_string(),
+                details: Some(e.to_string()),
+            });
+            return Err(e);
+        }
+
+        // Apply phase
+        (on_progress.borrow_mut())(ProgressEvent::PhaseStarted {
+            phase: Phase::Applying,
+        });
+        if let Err(e) = patch::apply_entries(
+            &self.manifest.entries,
+            target,
+            &self.patch_dir,
+            &backup_dir,
+            Some(&send_operation),
+        ) {
+            (on_progress.borrow_mut())(ProgressEvent::Error {
+                message: "Apply failed".to_string(),
+                details: Some(e.to_string()),
+            });
+            return Err(e);
+        }
+
+        (on_progress.borrow_mut())(ProgressEvent::Done {
+            files_patched: self.manifest.entries.len(),
         });
 
         Ok(())

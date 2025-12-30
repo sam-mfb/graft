@@ -1,4 +1,4 @@
-use crate::runner::{PatchRunner, ProgressEvent};
+use crate::runner::{PatchRunner, Phase, ProgressEvent};
 use crate::validator::{PatchInfo, PatchValidationError, PatchValidator};
 use eframe::egui;
 use std::path::PathBuf;
@@ -16,8 +16,9 @@ pub enum AppState {
     Applying {
         path: PathBuf,
         progress: f32,
-        total: usize,
-        completed: usize,
+        current_phase: Option<Phase>,
+        completed_phases: usize,
+        phase_total: usize,
         log: Vec<String>,
     },
     /// Patch applied successfully
@@ -98,8 +99,9 @@ impl GraftApp {
                 self.state = AppState::Applying {
                     path: target_path,
                     progress: 0.0,
-                    total: self.patch_info.entry_count,
-                    completed: 0,
+                    current_phase: Some(Phase::Applying),
+                    completed_phases: 0,
+                    phase_total: self.patch_info.entry_count,
                     log: vec!["[Demo] Starting patch application...".to_string()],
                 };
                 return;
@@ -117,8 +119,9 @@ impl GraftApp {
         self.state = AppState::Applying {
             path: target_path.clone(),
             progress: 0.0,
-            total,
-            completed: 0,
+            current_phase: None,
+            completed_phases: 0,
+            phase_total: total,
             log: Vec::new(),
         };
 
@@ -159,30 +162,47 @@ impl GraftApp {
 
         for event in messages {
             match event {
-                ProgressEvent::Processing { file, index, total: t } => {
+                ProgressEvent::PhaseStarted { phase } => {
+                    if let AppState::Applying {
+                        log,
+                        current_phase,
+                        completed_phases,
+                        progress,
+                        phase_total,
+                        ..
+                    } = &mut self.state
+                    {
+                        // Mark previous phase as complete
+                        if current_phase.is_some() {
+                            *completed_phases += 1;
+                        }
+                        *current_phase = Some(phase);
+                        log.push(format!("[{}]", phase));
+                        // Update progress: each phase is 1/3 of total
+                        *progress = *completed_phases as f32 / 3.0;
+                        // Reset phase total (will be updated by first Operation)
+                        let _ = phase_total;
+                    }
+                }
+                ProgressEvent::Operation {
+                    file,
+                    index,
+                    total,
+                    action,
+                } => {
                     if let AppState::Applying {
                         log,
                         progress,
-                        total,
+                        completed_phases,
+                        phase_total,
                         ..
                     } = &mut self.state
                     {
-                        log.push(format!("[{}/{}] {}", index + 1, t, file));
-                        *progress = index as f32 / t as f32;
-                        *total = t;
-                    }
-                }
-                ProgressEvent::Processed { index, total: t } => {
-                    if let AppState::Applying {
-                        progress,
-                        total,
-                        completed,
-                        ..
-                    } = &mut self.state
-                    {
-                        *completed = index + 1;
-                        *progress = *completed as f32 / t as f32;
-                        *total = t;
+                        log.push(format!("  [{}/{}] {}: {}", index + 1, total, action, file));
+                        *phase_total = total;
+                        // Progress: completed phases + current phase progress
+                        let phase_progress = (index + 1) as f32 / total.max(1) as f32;
+                        *progress = (*completed_phases as f32 + phase_progress) / 3.0;
                     }
                 }
                 ProgressEvent::Done { files_patched } => {
@@ -323,8 +343,7 @@ impl GraftApp {
         ui: &mut egui::Ui,
         log: Vec<String>,
         progress: f32,
-        total: usize,
-        completed: usize,
+        current_phase: Option<Phase>,
     ) {
         ui.heading("Applying Patch...");
         ui.add_space(16.0);
@@ -332,7 +351,9 @@ impl GraftApp {
         ui.add(egui::ProgressBar::new(progress).show_percentage());
         ui.add_space(8.0);
 
-        ui.label(format!("{} / {} operations completed", completed, total));
+        if let Some(phase) = current_phase {
+            ui.label(format!("Phase: {}", phase));
+        }
 
         ui.add_space(8.0);
         Self::render_log(ui, &log);
@@ -344,28 +365,33 @@ impl GraftApp {
                 if ui.button("Simulate Progress").clicked() {
                     if let AppState::Applying {
                         path,
-                        total,
-                        completed,
+                        phase_total,
+                        completed_phases,
                         log,
+                        current_phase,
                         ..
                     } = &self.state
                     {
-                        let new_completed = (completed + 1).min(*total);
-                        let new_progress = new_completed as f32 / *total as f32;
                         let mut new_log = log.clone();
-                        new_log.push(format!("[{}/{}] file_{}.bin", new_completed, *total, new_completed));
-                        if new_completed >= *total {
+                        let new_completed = completed_phases + 1;
+                        new_log.push(format!(
+                            "  [{}/{}] Patching: file_{}.bin",
+                            new_completed, phase_total, new_completed
+                        ));
+                        let new_progress = new_completed as f32 / 3.0;
+                        if new_completed >= 3 {
                             self.state = AppState::Success {
                                 path: path.clone(),
-                                files_patched: *total,
+                                files_patched: *phase_total,
                                 log: new_log,
                             };
                         } else {
                             self.state = AppState::Applying {
                                 path: path.clone(),
                                 progress: new_progress,
-                                total: *total,
-                                completed: new_completed,
+                                current_phase: *current_phase,
+                                completed_phases: new_completed,
+                                phase_total: *phase_total,
                                 log: new_log,
                             };
                         }
@@ -529,10 +555,9 @@ impl eframe::App for GraftApp {
                 AppState::Applying {
                     log,
                     progress,
-                    total,
-                    completed,
+                    current_phase,
                     ..
-                } => self.render_applying(ui, log, progress, total, completed),
+                } => self.render_applying(ui, log, progress, current_phase),
                 AppState::Success { path, files_patched, log } => {
                     self.render_success(ctx, ui, &path, files_patched, &log)
                 }

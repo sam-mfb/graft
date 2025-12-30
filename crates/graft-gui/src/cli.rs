@@ -45,19 +45,23 @@ pub fn run_headless(
     println!("\nApplying patch...");
 
     let runner = PatchRunner::new(patch_data)?;
-    let result = runner.apply(target_path, |event| {
-        match event {
-            ProgressEvent::Processing { file, index, total } => {
-                print!("  [{}/{}] {}... ", index + 1, total, file);
-                let _ = io::stdout().flush();
-            }
-            ProgressEvent::Processed { .. } => {
-                println!("ok");
-            }
-            ProgressEvent::Done { .. } => {}
-            ProgressEvent::Error { .. } => {
-                println!("FAILED");
-            }
+    let result = runner.apply(target_path, |event| match event {
+        ProgressEvent::PhaseStarted { phase } => {
+            println!("\n{}...", phase);
+        }
+        ProgressEvent::Operation {
+            file,
+            index,
+            total,
+            action,
+        } => {
+            println!("  [{}/{}] {}: {}", index + 1, total, action, file);
+        }
+        ProgressEvent::Done { files_patched } => {
+            println!("\n{} files processed.", files_patched);
+        }
+        ProgressEvent::Error { .. } => {
+            // Error details will be printed by the result handler below
         }
     });
 
