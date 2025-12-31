@@ -9,27 +9,31 @@
 //! cargo run -p graft-gui -- demo
 //! ```
 //!
-//! ## 2. Template for Generated Patchers
+//! ## 2. Patcher Stub / Self-Appending Binary
 //!
-//! The `graft-builder` tool uses this crate as a template to generate standalone
-//! patcher executables. It compiles this crate with:
-//! - The `embedded_patch` feature enabled
-//! - The `GRAFT_PATCH_ARCHIVE` env var pointing to the patch archive
+//! This binary can be used as a "stub" for creating patchers. Patch data
+//! can be appended to the end of the executable, and the patcher will
+//! read it at runtime. This allows creating patchers without recompilation.
 //!
-//! The generated patcher is a self-contained executable that users can run to
-//! apply a specific patch - no separate patch files needed.
+//! The binary format for self-appending:
+//! ```text
+//! [executable] + [patch.tar.gz] + [size: u64 LE] + [magic: "GRAFTPCH"]
+//! ```
+//!
+//! Alternatively, the `embedded_patch` feature can be used for compile-time
+//! embedding via `include_bytes!`.
 //!
 //! ## Modes
 //!
-//! - **GUI mode** (default): `graft-gui` - graphical interface
+//! - **GUI mode** (default): graphical interface
 //! - **Demo mode**: `graft-gui demo` - GUI with mock data for development
 //! - **Headless apply**: `graft-gui headless apply <path>` - CLI-only for scripting
 //! - **Headless rollback**: `graft-gui headless rollback <path>` - undo a patch
 
-#[cfg(feature = "embedded_patch")]
 mod cli;
 mod gui;
 mod runner;
+mod self_read;
 mod validator;
 
 use clap::{Parser, Subcommand};
@@ -91,60 +95,67 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 }
 
+/// Get patch data from compile-time embedding or runtime self-reading.
+///
+/// Priority:
+/// 1. Compile-time embedded data (if `embedded_patch` feature is enabled)
+/// 2. Runtime self-reading (appended data at end of executable)
+fn get_patch_data() -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    // Try compile-time embedded data first
+    #[cfg(feature = "embedded_patch")]
+    {
+        const PATCH_DATA: &[u8] = include_bytes!(env!("GRAFT_PATCH_ARCHIVE"));
+        return Ok(PATCH_DATA.to_vec());
+    }
+
+    // Fall back to runtime self-reading
+    #[cfg(not(feature = "embedded_patch"))]
+    {
+        self_read::read_appended_data().map_err(|e| e.into())
+    }
+}
+
 /// Run the GUI application
 fn run_gui(is_demo: bool) -> Result<(), Box<dyn std::error::Error>> {
     if is_demo {
         return gui::run(None).map_err(|e| e.into());
     }
 
-    #[cfg(feature = "embedded_patch")]
-    {
-        const PATCH_DATA: &[u8] = include_bytes!(env!("GRAFT_PATCH_ARCHIVE"));
-        return gui::run(Some(PATCH_DATA)).map_err(|e| e.into());
-    }
-
-    #[cfg(not(feature = "embedded_patch"))]
-    {
-        eprintln!("Error: No embedded patch data available.");
-        eprintln!("This binary was not built with an embedded patch.");
-        eprintln!();
-        eprintln!("Options:");
-        eprintln!("  - Use 'demo' subcommand for testing: graft-gui demo");
-        eprintln!("  - Build a patcher with graft-builder to embed a patch");
-        std::process::exit(1);
+    match get_patch_data() {
+        Ok(data) => gui::run(Some(&data)).map_err(|e| e.into()),
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            eprintln!();
+            eprintln!("This binary has no embedded or appended patch data.");
+            eprintln!();
+            eprintln!("Options:");
+            eprintln!("  - Use 'demo' subcommand for testing: graft-gui demo");
+            eprintln!("  - Create a patcher with: graft patcher create <patch-dir>");
+            std::process::exit(1);
+        }
     }
 }
 
 /// Run in headless (CLI) mode
 fn run_headless(target_path: &PathBuf, skip_confirm: bool) -> Result<(), Box<dyn std::error::Error>> {
-    #[cfg(feature = "embedded_patch")]
-    {
-        const PATCH_DATA: &[u8] = include_bytes!(env!("GRAFT_PATCH_ARCHIVE"));
-        return cli::run_headless(PATCH_DATA, target_path, skip_confirm);
-    }
-
-    #[cfg(not(feature = "embedded_patch"))]
-    {
-        let _ = (target_path, skip_confirm); // Suppress unused warnings
-        eprintln!("Error: No embedded patch data available.");
-        eprintln!("Headless mode requires a patcher built with graft-builder.");
-        std::process::exit(1);
+    match get_patch_data() {
+        Ok(data) => cli::run_headless(&data, target_path, skip_confirm),
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            eprintln!("Headless mode requires patch data.");
+            std::process::exit(1);
+        }
     }
 }
 
 /// Run rollback in headless (CLI) mode
 fn run_rollback(target_path: &PathBuf, force: bool) -> Result<(), Box<dyn std::error::Error>> {
-    #[cfg(feature = "embedded_patch")]
-    {
-        const PATCH_DATA: &[u8] = include_bytes!(env!("GRAFT_PATCH_ARCHIVE"));
-        return cli::run_rollback(PATCH_DATA, target_path, force);
-    }
-
-    #[cfg(not(feature = "embedded_patch"))]
-    {
-        let _ = (target_path, force); // Suppress unused warnings
-        eprintln!("Error: No embedded patch data available.");
-        eprintln!("Headless mode requires a patcher built with graft-builder.");
-        std::process::exit(1);
+    match get_patch_data() {
+        Ok(data) => cli::run_rollback(&data, target_path, force),
+        Err(e) => {
+            eprintln!("Error: {}", e);
+            eprintln!("Rollback mode requires patch data.");
+            std::process::exit(1);
+        }
     }
 }

@@ -9,8 +9,7 @@ graft/
 ├── crates/
 │   ├── graft-core/      # Shared library (patching logic)
 │   ├── graft/           # CLI tool
-│   ├── graft-gui/       # GUI patcher application
-│   └── graft-builder/   # Builder for self-contained patchers
+│   └── graft-gui/       # GUI patcher application (also serves as stub for patchers)
 ```
 
 ## Installation
@@ -117,17 +116,19 @@ The `--force` flag skips validation of target files (use when files have been mo
 
 ## Building Self-Contained Patchers
 
-The `graft-builder` tool creates standalone patcher executables with embedded patch data.
+The `graft patcher` command creates standalone patcher executables by appending patch data to pre-built stub binaries. No Rust toolchain required!
 
 ### Usage
 
-```
-graft-builder build <patch-dir> [OPTIONS]
+```bash
+# List available target platforms
+graft patcher targets
 
-OPTIONS:
-    -o, --output <DIR>       Output directory [default: ./dist]
-    -n, --name <NAME>        Patcher name [default: patcher]
-        --targets <TARGETS>  Cross-compile for specific targets (comma-separated)
+# Create a patcher for the current platform
+graft patcher create <patch-dir> [-o <output-file>]
+
+# Create a patcher for a specific target
+graft patcher create <patch-dir> --target <target> [-o <output-file>]
 ```
 
 ### Example
@@ -137,40 +138,39 @@ OPTIONS:
 graft patch create original/ modified/ my-patch/
 
 # Build a self-contained patcher
-graft-builder build my-patch/ -o dist/ -n my-patcher
+graft patcher create my-patch/ -o my-patcher
 
 # The resulting binary can be distributed and run:
-./dist/my-patcher                              # GUI mode
-./dist/my-patcher headless apply /target -y   # CLI mode (apply)
-./dist/my-patcher headless rollback /target   # CLI mode (rollback)
+./my-patcher                              # GUI mode
+./my-patcher headless apply /target -y   # CLI mode (apply)
+./my-patcher headless rollback /target   # CLI mode (rollback)
 ```
 
-### Cross-Compilation
+### Available Targets
 
-Build patchers for multiple platforms using [cross](https://github.com/cross-rs/cross).
-
-**Prerequisites:**
-- Docker installed and running
-- Install cross: `cargo install cross`
-
-**Available targets:**
 | Name | Platform |
 |------|----------|
 | `linux-x64` | Linux x86_64 |
 | `linux-arm64` | Linux ARM64 |
-| `windows` | Windows x86_64 |
+| `windows-x64` | Windows x86_64 |
+| `macos-x64` | macOS x86_64 |
+| `macos-arm64` | macOS ARM64 (Apple Silicon) |
 
-**Example:**
+### Cross-Platform Example
 
 ```bash
-# Build for a single target
-graft-builder build my-patch/ -n my-patcher --targets linux-x64
-
-# Build for multiple targets
-graft-builder build my-patch/ -n my-patcher --targets linux-x64,linux-arm64,windows
-
-# Output files:
-# dist/my-patcher-linux-x64
-# dist/my-patcher-linux-arm64
-# dist/my-patcher-windows.exe
+# Create patchers for multiple platforms
+graft patcher create my-patch/ --target linux-x64 -o my-patcher-linux
+graft patcher create my-patch/ --target windows-x64 -o my-patcher.exe
+graft patcher create my-patch/ --target macos-arm64 -o my-patcher-macos
 ```
+
+### How It Works
+
+Patchers are created using a "self-appending binary" approach:
+
+1. Pre-built stub binaries are downloaded on first use (cached locally)
+2. Your patch data (tar.gz archive) is appended to the stub
+3. At runtime, the patcher reads the appended data from itself
+
+This means you can create patchers for any platform without needing cross-compilation tools!

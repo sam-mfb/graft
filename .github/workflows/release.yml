@@ -1,0 +1,197 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Build stub binaries for all platforms
+  build-stubs:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            name: linux-x64
+            cross: false
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            name: linux-arm64
+            cross: true
+          - os: ubuntu-latest
+            target: x86_64-pc-windows-gnu
+            name: windows-x64
+            cross: true
+          - os: macos-13  # Intel runner
+            target: x86_64-apple-darwin
+            name: macos-x64
+            cross: false
+          - os: macos-14  # ARM runner
+            target: aarch64-apple-darwin
+            name: macos-arm64
+            cross: false
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-action@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install cross
+        if: matrix.cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
+
+      - name: Build stub (native)
+        if: ${{ !matrix.cross }}
+        run: |
+          cargo build --release --package graft-gui --target ${{ matrix.target }}
+
+      - name: Build stub (cross)
+        if: matrix.cross
+        run: |
+          cross build --release --package graft-gui --target ${{ matrix.target }}
+
+      - name: Prepare stub artifact
+        shell: bash
+        run: |
+          SUFFIX=""
+          if [[ "${{ matrix.target }}" == *"windows"* ]]; then
+            SUFFIX=".exe"
+          fi
+          mkdir -p stubs
+          cp target/${{ matrix.target }}/release/graft-gui${SUFFIX} \
+             stubs/graft-gui-stub-${{ matrix.name }}${SUFFIX}
+
+      - name: Upload stub artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: stub-${{ matrix.name }}
+          path: stubs/
+
+  # Build graft CLI with embedded stubs for all platforms
+  build-cli:
+    needs: build-stubs
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            name: linux-x64
+            cross: false
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            name: linux-arm64
+            cross: true
+          - os: ubuntu-latest
+            target: x86_64-pc-windows-gnu
+            name: windows-x64
+            cross: true
+          - os: macos-13
+            target: x86_64-apple-darwin
+            name: macos-x64
+            cross: false
+          - os: macos-14
+            target: aarch64-apple-darwin
+            name: macos-arm64
+            cross: false
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-action@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install cross
+        if: matrix.cross
+        run: cargo install cross --git https://github.com/cross-rs/cross
+
+      - name: Download all stub artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: stubs
+          pattern: stub-*
+          merge-multiple: true
+
+      - name: List stubs
+        run: ls -la stubs/
+
+      - name: Build CLI with embedded stubs (native)
+        if: ${{ !matrix.cross }}
+        env:
+          GRAFT_STUBS_DIR: ${{ github.workspace }}/stubs
+        run: |
+          cargo build --release --package graft --target ${{ matrix.target }} \
+            --features embedded-stubs
+
+      - name: Build CLI with embedded stubs (cross)
+        if: matrix.cross
+        env:
+          GRAFT_STUBS_DIR: ${{ github.workspace }}/stubs
+        run: |
+          cross build --release --package graft --target ${{ matrix.target }} \
+            --features embedded-stubs
+
+      - name: Prepare CLI artifact
+        shell: bash
+        run: |
+          SUFFIX=""
+          if [[ "${{ matrix.target }}" == *"windows"* ]]; then
+            SUFFIX=".exe"
+          fi
+          mkdir -p dist
+          cp target/${{ matrix.target }}/release/graft${SUFFIX} \
+             dist/graft-${{ matrix.name }}${SUFFIX}
+
+      - name: Upload CLI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: graft-${{ matrix.name }}
+          path: dist/
+
+  # Create GitHub release with all artifacts
+  release:
+    needs: [build-stubs, build-cli]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release files
+        run: |
+          mkdir -p release
+          # Copy stubs
+          for dir in artifacts/stub-*; do
+            cp "$dir"/* release/ 2>/dev/null || true
+          done
+          # Copy CLI binaries
+          for dir in artifacts/graft-*; do
+            cp "$dir"/* release/ 2>/dev/null || true
+          done
+          ls -la release/
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}

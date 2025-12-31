@@ -29,6 +29,31 @@ enum Commands {
         #[command(subcommand)]
         command: PatchCommands,
     },
+    /// Create standalone patcher executables
+    Patcher {
+        #[command(subcommand)]
+        command: PatcherCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum PatcherCommands {
+    /// Create a self-contained patcher executable
+    Create {
+        /// Path to the patch directory (containing manifest.json)
+        patch_dir: PathBuf,
+
+        /// Target platform (linux-x64, linux-arm64, windows-x64, macos-x64, macos-arm64)
+        #[arg(short, long)]
+        target: Option<String>,
+
+        /// Output file path
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+
+    /// List available target platforms
+    Targets,
 }
 
 #[derive(Subcommand)]
@@ -223,6 +248,35 @@ fn main() {
                         eprintln!("Error: {}", e);
                         process::exit(2);
                     }
+                }
+            }
+        },
+        Commands::Patcher { command } => match command {
+            PatcherCommands::Create {
+                patch_dir,
+                target,
+                output,
+            } => {
+                match graft::commands::patcher_create::run(
+                    &patch_dir,
+                    target.as_deref(),
+                    output.as_deref(),
+                ) {
+                    Ok(()) => {}
+                    Err(e) => {
+                        eprintln!("Error: {}", e);
+                        process::exit(2);
+                    }
+                }
+            }
+            PatcherCommands::Targets => {
+                println!("Available targets:");
+                for target in graft::targets::ALL_TARGETS {
+                    let current = graft::targets::current_target()
+                        .map(|t| t.name == target.name)
+                        .unwrap_or(false);
+                    let marker = if current { " (current)" } else { "" };
+                    println!("  {}{}", target.name, marker);
                 }
             }
         },
