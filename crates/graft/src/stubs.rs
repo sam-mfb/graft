@@ -164,6 +164,7 @@ fn download_stub(target: &Target) -> Result<Vec<u8>, StubError> {
 
     let mut data = Vec::new();
     response
+        .into_body()
         .into_reader()
         .read_to_end(&mut data)
         .map_err(|e| StubError::DownloadFailed(e.to_string()))?;
