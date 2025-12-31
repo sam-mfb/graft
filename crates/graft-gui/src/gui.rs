@@ -1088,23 +1088,33 @@ pub fn run(patch_data: Option<&[u8]>) -> eframe::Result<()> {
     };
 
     eframe::run_native("Graft Patcher", options, Box::new(|cc| {
-        // Disable system theme detection - force light theme
-        // This prevents Windows from overriding our theme settings
-        cc.egui_ctx.options_mut(|opts| {
-            opts.theme_preference = egui::ThemePreference::Light;
-        });
-
-        // Use light theme with explicit text colors for Windows compatibility
+        // Build our custom light visuals with explicit dark text
         let mut visuals = egui::Visuals::light();
         let dark_text = egui::Color32::from_gray(30);
         visuals.override_text_color = Some(dark_text);
-        // Also set widget foreground strokes to ensure all text is dark
         visuals.widgets.noninteractive.fg_stroke.color = dark_text;
         visuals.widgets.inactive.fg_stroke.color = dark_text;
         visuals.widgets.hovered.fg_stroke.color = dark_text;
         visuals.widgets.active.fg_stroke.color = dark_text;
         visuals.widgets.open.fg_stroke.color = dark_text;
+
+        // Build a complete style with our visuals
+        let mut style = egui::Style::default();
+        style.visuals = visuals.clone();
+
+        // Configure options to force light theme and use our custom style
+        cc.egui_ctx.options_mut(|opts| {
+            opts.theme_preference = egui::ThemePreference::Light;
+            opts.fallback_theme = egui::Theme::Light;
+            // Set both light and dark styles to our custom light style
+            // This ensures no matter what theme is detected, we use our style
+            opts.light_style = std::sync::Arc::new(style.clone());
+            opts.dark_style = std::sync::Arc::new(style.clone());
+        });
+
+        // Also set visuals directly to be safe
         cc.egui_ctx.set_visuals(visuals);
+
         Ok(Box::new(app))
     }))
 }
