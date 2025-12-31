@@ -135,14 +135,13 @@ fn get_cached_stub(target: &Target) -> Result<Vec<u8>, StubError> {
 fn download_stub(target: &Target) -> Result<Vec<u8>, StubError> {
     let filename = targets::stub_filename(target);
 
-    // TODO: Replace with actual GitHub org/repo
     let url = match std::env::var("GRAFT_STUB_VERSION") {
         Ok(version) => format!(
-            "https://github.com/OWNER/graft/releases/download/v{}/{}",
+            "https://github.com/sam-mfb/graft/releases/download/v{}/{}",
             version, filename
         ),
         Err(_) => format!(
-            "https://github.com/OWNER/graft/releases/latest/download/{}",
+            "https://github.com/sam-mfb/graft/releases/latest/download/{}",
             filename
         ),
     };
