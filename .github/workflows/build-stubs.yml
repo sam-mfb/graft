@@ -57,7 +57,8 @@ jobs:
         run: |
           cross build --release --package graft-gui --target ${{ matrix.target }}
 
-      - name: Prepare stub artifact
+      - name: Prepare stub artifact (non-macOS)
+        if: ${{ !startsWith(matrix.name, 'macos-') }}
         shell: bash
         run: |
           SUFFIX=""
@@ -67,6 +68,56 @@ jobs:
           mkdir -p stubs
           cp target/${{ matrix.target }}/release/graft-gui${SUFFIX} \
              stubs/graft-gui-stub-${{ matrix.name }}${SUFFIX}
+
+      - name: Prepare stub artifact (macOS bundle)
+        if: startsWith(matrix.name, 'macos-')
+        shell: bash
+        run: |
+          APP_DIR="stubs/GraftPatcher.app"
+          mkdir -p "$APP_DIR/Contents/MacOS"
+          mkdir -p "$APP_DIR/Contents/Resources"
+
+          # Copy executable
+          cp target/${{ matrix.target }}/release/graft-gui "$APP_DIR/Contents/MacOS/graft-gui"
+          chmod +x "$APP_DIR/Contents/MacOS/graft-gui"
+
+          # Copy default icon
+          cp crates/graft-gui/assets/AppIcon.icns "$APP_DIR/Contents/Resources/AppIcon.icns"
+
+          # Create Info.plist
+          cat > "$APP_DIR/Contents/Info.plist" << 'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleExecutable</key>
+              <string>graft-gui</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.graft.patcher</string>
+              <key>CFBundleName</key>
+              <string>Graft Patcher</string>
+              <key>CFBundleDisplayName</key>
+              <string>Graft Patcher</string>
+              <key>CFBundleVersion</key>
+              <string>1.0.0</string>
+              <key>CFBundleShortVersionString</key>
+              <string>1.0.0</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>CFBundleIconFile</key>
+              <string>AppIcon</string>
+              <key>LSMinimumSystemVersion</key>
+              <string>10.13</string>
+              <key>NSHighResolutionCapable</key>
+              <true/>
+          </dict>
+          </plist>
+          EOF
+
+          # Create zip of the bundle
+          cd stubs
+          zip -r "graft-gui-stub-${{ matrix.name }}.app.zip" GraftPatcher.app
+          rm -rf GraftPatcher.app
 
       - name: Upload stub artifact
         uses: actions/upload-artifact@v4

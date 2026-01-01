@@ -11,6 +11,8 @@ pub struct Target {
     pub triple: &'static str,
     /// Binary suffix (e.g., ".exe" for Windows)
     pub binary_suffix: &'static str,
+    /// Whether the stub is distributed as a .app bundle (macOS)
+    pub stub_is_bundle: bool,
 }
 
 impl fmt::Display for Target {
@@ -23,30 +25,35 @@ pub const LINUX_X64: Target = Target {
     name: "linux-x64",
     triple: "x86_64-unknown-linux-gnu",
     binary_suffix: "",
+    stub_is_bundle: false,
 };
 
 pub const LINUX_ARM64: Target = Target {
     name: "linux-arm64",
     triple: "aarch64-unknown-linux-gnu",
     binary_suffix: "",
+    stub_is_bundle: false,
 };
 
 pub const WINDOWS_X64: Target = Target {
     name: "windows-x64",
     triple: "x86_64-pc-windows-gnu",
     binary_suffix: ".exe",
+    stub_is_bundle: false,
 };
 
 pub const MACOS_X64: Target = Target {
     name: "macos-x64",
     triple: "x86_64-apple-darwin",
     binary_suffix: "",
+    stub_is_bundle: true,
 };
 
 pub const MACOS_ARM64: Target = Target {
     name: "macos-arm64",
     triple: "aarch64-apple-darwin",
     binary_suffix: "",
+    stub_is_bundle: true,
 };
 
 /// All available targets.
@@ -92,8 +99,15 @@ pub fn current_target() -> Option<Target> {
 }
 
 /// Get stub filename for a target.
+///
+/// For bundle targets (macOS), returns `.app.zip` suffix.
+/// For binary targets, returns the binary suffix (e.g., `.exe` for Windows).
 pub fn stub_filename(target: &Target) -> String {
-    format!("graft-gui-stub-{}{}", target.name, target.binary_suffix)
+    if target.stub_is_bundle {
+        format!("graft-gui-stub-{}.app.zip", target.name)
+    } else {
+        format!("graft-gui-stub-{}{}", target.name, target.binary_suffix)
+    }
 }
 
 #[cfg(test)]
@@ -121,5 +135,6 @@ mod tests {
     fn stub_filename_formats_correctly() {
         assert_eq!(stub_filename(&LINUX_X64), "graft-gui-stub-linux-x64");
         assert_eq!(stub_filename(&WINDOWS_X64), "graft-gui-stub-windows-x64.exe");
+        assert_eq!(stub_filename(&MACOS_ARM64), "graft-gui-stub-macos-arm64.app.zip");
     }
 }

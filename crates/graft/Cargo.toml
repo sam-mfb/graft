@@ -18,6 +18,7 @@ dirs = "6"
 graft-core = { path = "../graft-core" }
 icns = "0.3.1"
 ureq = "3"
+zip = { version = "2", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]
 tempfile = "3.24"

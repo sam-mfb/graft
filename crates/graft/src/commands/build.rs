@@ -3,11 +3,11 @@
 //! This command creates standalone patcher binaries by concatenating
 //! a pre-built stub with the patch archive data.
 //!
-//! For macOS targets, creates .app bundles with icons.
+//! For macOS targets, modifies stub .app bundles with patch data and custom metadata.
 
 use crate::commands::macos_bundle::{self, BundleError};
 use crate::stubs::{self, StubError};
-use crate::targets::{self, Target};
+use crate::targets;
 use graft_core::archive::{self, MAGIC_MARKER};
 use graft_core::patch;
 use graft_core::utils::manifest::PatchInfo;
@@ -57,11 +57,6 @@ impl std::error::Error for PatcherError {
     }
 }
 
-/// Check if a target is macOS.
-fn is_macos_target(target: &Target) -> bool {
-    target.name.starts_with("macos-")
-}
-
 /// Create a self-appending patcher executable.
 ///
 /// # Arguments
@@ -99,23 +94,11 @@ pub fn run(
         archive::create_archive_bytes(patch_dir).map_err(PatcherError::ArchiveCreation)?;
     println!("done ({} bytes)", archive_data.len());
 
-    // 4. Get stub
-    print!("Getting stub binary... ");
-    io::stdout().flush().ok();
-    let stub_data = stubs::get_stub(&target).map_err(PatcherError::StubError)?;
-    println!("done ({} bytes)", stub_data.len());
-
-    // 5. Create combined executable data
-    let executable_data = create_executable_bytes(&stub_data, &archive_data);
-    let total_size = executable_data.len();
-
-    // 6. Determine output path and create patcher
-    let is_macos = is_macos_target(&target);
-
+    // 4. Determine output path
     let output = match output_path {
         Some(p) => p.to_path_buf(),
         None => {
-            if is_macos {
+            if target.stub_is_bundle {
                 Path::new(".").join("patcher.app")
             } else {
                 let name = format!("patcher{}", target.binary_suffix);
@@ -124,22 +107,22 @@ pub fn run(
         }
     };
 
-    if is_macos {
-        // Create .app bundle for macOS
+    // 5. Build patcher based on target type
+    if target.stub_is_bundle {
+        // macOS: Get stub bundle, copy and modify it
+        print!("Getting stub bundle... ");
+        io::stdout().flush().ok();
+        let stub_bundle_path = stubs::get_stub_bundle(&target).map_err(PatcherError::StubError)?;
+        println!("done");
+
         print!("Creating macOS bundle at {}... ", output.display());
         io::stdout().flush().ok();
 
-        // Derive app name from output path
-        let app_name = output
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("patcher");
-
-        macos_bundle::create_bundle(
+        let total_size = macos_bundle::modify_bundle(
+            &stub_bundle_path,
             &output,
-            &executable_data,
+            &archive_data,
             patch_dir,
-            app_name,
             info.title.as_deref(),
             &info.version.to_string(),
         )
@@ -149,7 +132,15 @@ pub fn run(
         println!();
         println!("Created: {} ({} bytes executable)", output.display(), total_size);
     } else {
-        // Create plain binary for other platforms
+        // Other platforms: Get stub binary, concatenate with archive
+        print!("Getting stub binary... ");
+        io::stdout().flush().ok();
+        let stub_data = stubs::get_stub(&target).map_err(PatcherError::StubError)?;
+        println!("done ({} bytes)", stub_data.len());
+
+        let executable_data = create_executable_bytes(&stub_data, &archive_data);
+        let total_size = executable_data.len();
+
         print!("Writing patcher to {}... ", output.display());
         io::stdout().flush().ok();
 
