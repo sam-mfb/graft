@@ -59,7 +59,7 @@ fn cache_dir() -> io::Result<PathBuf> {
 ///
 /// Priority:
 /// 1. Embedded stubs (if compiled with `embedded-stubs` feature)
-/// 2. Native stub (if compiled with `native-stub` feature and target matches)
+/// 2. Native stub (if compiled with `native-stub` feature on Linux and target matches)
 /// 3. Cached stub from previous download
 /// 4. Download from GitHub releases
 pub fn get_stub(target: &Target) -> Result<Vec<u8>, StubError> {
@@ -71,8 +71,8 @@ pub fn get_stub(target: &Target) -> Result<Vec<u8>, StubError> {
         }
     }
 
-    // 2. Try native stub (if compiled with native-stub feature and target matches)
-    #[cfg(feature = "native-stub")]
+    // 2. Try native stub (Linux only with native-stub feature)
+    #[cfg(all(feature = "native-stub", target_os = "linux"))]
     {
         if let Some(current) = targets::current_target() {
             if current.name == target.name {
@@ -98,8 +98,9 @@ pub fn get_stub(target: &Target) -> Result<Vec<u8>, StubError> {
 /// after first download/extraction.
 ///
 /// Priority:
-/// 1. Cached extracted bundle
-/// 2. Download from GitHub releases and extract
+/// 1. Embedded bundle (if compiled with `embedded-stubs` feature)
+/// 2. Cached extracted bundle
+/// 3. Download from GitHub releases and extract
 pub fn get_stub_bundle(target: &Target) -> Result<PathBuf, StubError> {
     if !target.stub_is_bundle {
         return Err(StubError::TargetNotAvailable(format!(
@@ -112,12 +113,23 @@ pub fn get_stub_bundle(target: &Target) -> Result<PathBuf, StubError> {
     let bundle_name = format!("graft-gui-stub-{}.app", target.name);
     let bundle_path = cache.join(&bundle_name);
 
-    // Check if already extracted
+    // 1. Try embedded bundle (extract to cache if not already there)
+    #[cfg(feature = "embedded-stubs")]
+    {
+        if let Some(zip_data) = get_embedded_stub_bundle(target) {
+            if !bundle_path.exists() {
+                extract_zip(zip_data, &bundle_path)?;
+            }
+            return Ok(bundle_path);
+        }
+    }
+
+    // 2. Check if already extracted in cache
     if bundle_path.exists() && bundle_path.is_dir() {
         return Ok(bundle_path);
     }
 
-    // Download and extract
+    // 3. Download and extract
     download_and_extract_bundle(target, &bundle_path)?;
 
     Ok(bundle_path)
@@ -127,12 +139,17 @@ pub fn get_stub_bundle(target: &Target) -> Result<PathBuf, StubError> {
 pub fn is_stub_available(target: &Target) -> bool {
     #[cfg(feature = "embedded-stubs")]
     {
+        // Check for embedded binary stub (non-macOS)
         if get_embedded_stub(target).is_some() {
+            return true;
+        }
+        // Check for embedded bundle stub (macOS)
+        if get_embedded_stub_bundle(target).is_some() {
             return true;
         }
     }
 
-    #[cfg(feature = "native-stub")]
+    #[cfg(all(feature = "native-stub", target_os = "linux"))]
     {
         if let Some(current) = targets::current_target() {
             if current.name == target.name && get_native_stub().is_some() {
@@ -143,9 +160,18 @@ pub fn is_stub_available(target: &Target) -> bool {
 
     // Check cache
     if let Ok(cache) = cache_dir() {
-        let path = cache.join(targets::stub_filename(target));
-        if path.exists() {
-            return true;
+        if target.stub_is_bundle {
+            // Check for extracted bundle
+            let bundle_path = cache.join(format!("graft-gui-stub-{}.app", target.name));
+            if bundle_path.exists() && bundle_path.is_dir() {
+                return true;
+            }
+        } else {
+            // Check for binary stub
+            let path = cache.join(targets::stub_filename(target));
+            if path.exists() {
+                return true;
+            }
         }
     }
 
@@ -335,6 +361,7 @@ fn extract_zip(zip_data: &[u8], output_path: &Path) -> Result<(), StubError> {
 }
 
 // Embedded stubs (when compiled with embedded-stubs feature)
+// Binary stubs for non-macOS platforms
 #[cfg(feature = "embedded-stubs")]
 fn get_embedded_stub(target: &Target) -> Option<&'static [u8]> {
     match target.name {
@@ -350,20 +377,29 @@ fn get_embedded_stub(target: &Target) -> Option<&'static [u8]> {
             env!("GRAFT_STUBS_DIR"),
             "/graft-gui-stub-windows-x64.exe"
         ))),
+        // macOS uses bundle stubs, not binary stubs
+        _ => None,
+    }
+}
+
+// Embedded bundle stubs for macOS (zipped .app bundles)
+#[cfg(feature = "embedded-stubs")]
+fn get_embedded_stub_bundle(target: &Target) -> Option<&'static [u8]> {
+    match target.name {
         "macos-x64" => Some(include_bytes!(concat!(
             env!("GRAFT_STUBS_DIR"),
-            "/graft-gui-stub-macos-x64"
+            "/graft-gui-stub-macos-x64.app.zip"
         ))),
         "macos-arm64" => Some(include_bytes!(concat!(
             env!("GRAFT_STUBS_DIR"),
-            "/graft-gui-stub-macos-arm64"
+            "/graft-gui-stub-macos-arm64.app.zip"
         ))),
         _ => None,
     }
 }
 
-// Native stub (when compiled with native-stub feature)
-#[cfg(feature = "native-stub")]
+// Native stub (Linux only, when compiled with native-stub feature)
+#[cfg(all(feature = "native-stub", target_os = "linux"))]
 fn get_native_stub() -> Option<&'static [u8]> {
     Some(include_bytes!(env!("GRAFT_NATIVE_STUB")))
 }

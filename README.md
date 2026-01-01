@@ -213,8 +213,10 @@ When building from source without the `embedded-stubs` feature, stubs are downlo
 | Feature | Description |
 |---------|-------------|
 | (default) | Downloads stubs from GitHub releases on demand |
-| `native-stub` | Embeds only the current platform's stub |
+| `native-stub` | Embeds only the current platform's stub (Linux only) |
 | `embedded-stubs` | Embeds all platform stubs (used for releases) |
+
+**Note:** The `native-stub` feature only works on Linux. On macOS and Windows, stubs are downloaded from GitHub releases on first use. This is because macOS requires `.app` bundles which are more complex to embed during local development.
 
 ### Stub Version (Development)
 
