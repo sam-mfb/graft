@@ -6,12 +6,12 @@ Binary patching toolkit for creating and applying patches to files.
 
 ```bash
 # 1. Create a patch from original and modified directories
-graft patch create original/ modified/ my-patch/
+graft patch create original/ modified/ my-patch/ --title "My Game Patcher"
 
 # 2. Create self-contained patchers for distribution
-graft patcher create my-patch/ --target linux-x64 -o my-patcher-linux
-graft patcher create my-patch/ --target windows-x64 -o my-patcher.exe
-graft patcher create my-patch/ --target macos-arm64 -o my-patcher-macos
+graft build create my-patch/ --target linux-x64 -o my-patcher-linux
+graft build create my-patch/ --target windows-x64 -o my-patcher.exe
+graft build create my-patch/ --target macos-arm64 -o my-patcher-macos
 
 # 3. End users just run the patcher
 ./my-patcher-linux                              # GUI mode
@@ -102,9 +102,9 @@ The `graft-gui` crate provides a graphical patcher application.
 
 ### Demo Mode
 
-Run the GUI with mock data for development/testing:
+The GUI automatically runs in demo mode with mock data when no patch data is embedded/appended:
 ```
-cargo run -p graft-gui -- demo
+cargo run -p graft-gui
 ```
 
 ### Headless Mode
@@ -123,6 +123,13 @@ Rollback a previously applied patch:
 
 The `--force` flag skips validation of target files (use when files have been modified since patching).
 
+**Windows Note:** When the patcher is double-clicked, stdout/stderr are not connected (Windows GUI subsystem). For scripted use, run from a terminal or use the main `graft` CLI.
+
+**macOS Note:** For .app bundles, the binary is inside the bundle:
+```
+./MyPatcher.app/Contents/MacOS/MyPatcher headless apply /path/to/game
+```
+
 ### Features
 
 - **Pre-validation**: Validates target files before applying (both GUI and headless)
@@ -132,29 +139,29 @@ The `--force` flag skips validation of target files (use when files have been mo
 
 ## Building Self-Contained Patchers
 
-The `graft patcher` command creates standalone patcher executables by appending patch data to pre-built stub binaries. No Rust toolchain required!
+The `graft build` command creates standalone patcher executables by appending patch data to pre-built stub binaries. No Rust toolchain required!
 
 ### Usage
 
 ```bash
 # List available target platforms
-graft patcher targets
+graft build targets
 
 # Create a patcher for the current platform
-graft patcher create <patch-dir> [-o <output-file>]
+graft build create <patch-dir> [-o <output-file>]
 
 # Create a patcher for a specific target
-graft patcher create <patch-dir> --target <target> [-o <output-file>]
+graft build create <patch-dir> --target <target> [-o <output-file>]
 ```
 
 ### Example
 
 ```bash
-# Create a patch
-graft patch create original/ modified/ my-patch/
+# Create a patch with a custom window title
+graft patch create original/ modified/ my-patch/ --title "My Game Patcher"
 
 # Build a self-contained patcher
-graft patcher create my-patch/ -o my-patcher
+graft build create my-patch/ -o my-patcher
 
 # The resulting binary can be distributed and run:
 ./my-patcher                              # GUI mode
@@ -176,9 +183,9 @@ graft patcher create my-patch/ -o my-patcher
 
 ```bash
 # Create patchers for multiple platforms
-graft patcher create my-patch/ --target linux-x64 -o my-patcher-linux
-graft patcher create my-patch/ --target windows-x64 -o my-patcher.exe
-graft patcher create my-patch/ --target macos-arm64 -o my-patcher-macos
+graft build create my-patch/ --target linux-x64 -o my-patcher-linux
+graft build create my-patch/ --target windows-x64 -o my-patcher.exe
+graft build create my-patch/ --target macos-arm64 -o my-patcher-macos
 ```
 
 ### How It Works

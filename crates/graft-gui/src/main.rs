@@ -1,3 +1,5 @@
+#![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
+
 //! # graft-gui
 //!
 //! This crate serves two purposes:
@@ -25,8 +27,8 @@
 //!
 //! ## Modes
 //!
-//! - **GUI mode** (default): graphical interface
-//! - **Demo mode**: `graft-gui demo` - GUI with mock data for development
+//! - **GUI mode** (default): graphical interface with embedded/appended patch data
+//! - **Demo mode** (automatic): if no patch data is found, runs with mock data
 //! - **Headless apply**: `graft-gui headless apply <path>` - CLI-only for scripting
 //! - **Headless rollback**: `graft-gui headless rollback <path>` - undo a patch
 
@@ -49,9 +51,6 @@ struct Args {
 
 #[derive(Subcommand, Debug)]
 enum Command {
-    /// Run in demo mode with mock data (for development/testing)
-    Demo,
-
     /// Run in headless (CLI) mode instead of GUI
     Headless {
         #[command(subcommand)]
@@ -86,12 +85,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
     match args.command {
-        Some(Command::Demo) => run_gui(true),
         Some(Command::Headless { action }) => match action {
             HeadlessAction::Apply { path, yes } => run_headless(&path, yes),
             HeadlessAction::Rollback { path, force } => run_rollback(&path, force),
         },
-        None => run_gui(false),
+        None => run_gui(),
     }
 }
 
@@ -116,22 +114,14 @@ fn get_patch_data() -> Result<Vec<u8>, Box<dyn std::error::Error>> {
 }
 
 /// Run the GUI application
-fn run_gui(is_demo: bool) -> Result<(), Box<dyn std::error::Error>> {
-    if is_demo {
-        return gui::run(None).map_err(|e| e.into());
-    }
-
+///
+/// If no patch data is embedded/appended, automatically runs in demo mode.
+fn run_gui() -> Result<(), Box<dyn std::error::Error>> {
     match get_patch_data() {
         Ok(data) => gui::run(Some(&data)).map_err(|e| e.into()),
-        Err(e) => {
-            eprintln!("Error: {}", e);
-            eprintln!();
-            eprintln!("This binary has no embedded or appended patch data.");
-            eprintln!();
-            eprintln!("Options:");
-            eprintln!("  - Use 'demo' subcommand for testing: graft-gui demo");
-            eprintln!("  - Create a patcher with: graft patcher create <patch-dir>");
-            std::process::exit(1);
+        Err(_) => {
+            // No patch data - run in demo mode
+            gui::run(None).map_err(|e| e.into())
         }
     }
 }

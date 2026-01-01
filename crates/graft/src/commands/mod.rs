@@ -6,4 +6,4 @@ pub mod diff_create;
 pub mod patch_apply;
 pub mod patch_create;
 pub mod patch_rollback;
-pub mod patcher_create;
+pub mod build;

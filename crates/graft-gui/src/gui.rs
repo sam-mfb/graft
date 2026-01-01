@@ -99,16 +99,24 @@ pub struct GraftApp {
     mode: Mode,
     /// Text input for manual path entry
     path_input: String,
+    /// Window title from manifest
+    title: String,
 }
 
 impl GraftApp {
     /// Create a new app in demo mode with mock data
     pub fn demo() -> Self {
+        let patch_info = PatchInfo::mock();
+        let title = patch_info
+            .title
+            .clone()
+            .unwrap_or_else(|| "Graft Patcher".to_string());
         GraftApp {
             state: AppState::Welcome,
-            patch_info: PatchInfo::mock(),
+            patch_info,
             mode: Mode::Demo,
             path_input: String::new(),
+            title,
         }
     }
 
@@ -118,6 +126,10 @@ impl GraftApp {
     /// the raw data for the worker thread to use when applying.
     pub fn new(patch_data: Vec<u8>) -> Result<Self, PatchValidationError> {
         let patch_info = PatchValidator::validate(&patch_data)?;
+        let title = patch_info
+            .title
+            .clone()
+            .unwrap_or_else(|| "Graft Patcher".to_string());
 
         Ok(GraftApp {
             state: AppState::Welcome,
@@ -129,6 +141,7 @@ impl GraftApp {
                 rollback_rx: None,
             },
             path_input: String::new(),
+            title,
         })
     }
 
@@ -1093,8 +1106,9 @@ pub fn run(patch_data: Option<&[u8]>) -> eframe::Result<()> {
         GraftApp::demo()
     };
 
+    let title = app.title.clone();
     eframe::run_native(
-        "Graft Patcher",
+        &title,
         options,
         Box::new(|_cc| Ok(Box::new(app))),
     )
