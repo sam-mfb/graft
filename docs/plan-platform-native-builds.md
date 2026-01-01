@@ -32,7 +32,7 @@ Make graft produce proper platform-native applications:
 
 ## B. Headless Mode Caveats
 
-**Goal:** Keep `headless` subcommand but document Windows limitations.
+**Goal:** Keep `headless` subcommand but document platform limitations.
 
 ### README Documentation
 
@@ -47,6 +47,10 @@ The `headless` subcommand applies patches without GUI:
 **Windows Note:** When built as a GUI application (default for releases),
 stdout/stderr are not connected when run from a terminal. For scripted
 use on Windows, run from PowerShell or use the main `graft` CLI tool.
+
+**macOS Note:** For .app bundles, run the binary inside the bundle directly:
+
+    ./MyPatcher.app/Contents/MacOS/MyPatcher headless --target /path/to/game
 ```
 
 No code changes required.
