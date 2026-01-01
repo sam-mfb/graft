@@ -8,3 +8,4 @@ pub mod macos_bundle;
 pub mod patch_apply;
 pub mod patch_create;
 pub mod patch_rollback;
+pub mod windows_icon;

@@ -198,6 +198,35 @@ Patchers are created using a "self-appending binary" approach:
 
 This means you can create patchers for any platform from any platform - no cross-compilation needed!
 
+### Customizing Patchers
+
+#### Window Title
+
+Set a custom window title when creating the patch:
+```bash
+graft patch create original/ modified/ my-patch/ --title "My Game Patcher"
+```
+
+Or edit `my-patch/manifest.json` directly to change the `"title"` field.
+
+#### Custom Icon
+
+Replace the default icon by placing your own PNG file in the patch folder:
+```
+my-patch/
+  manifest.json
+  diffs/
+  files/
+  .graft_assets/
+    icon.png          # Your custom icon (1024x1024 recommended)
+```
+
+The icon is automatically embedded when building patchers:
+- **Windows**: Embedded as the application icon (visible in Explorer)
+- **macOS**: Converted to .icns and included in the .app bundle
+
+If no custom icon is provided, a default graft icon is used.
+
 ## Development
 
 ### Building from Source

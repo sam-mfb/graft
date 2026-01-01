@@ -15,6 +15,7 @@ embedded-stubs = []
 [dependencies]
 clap = { version = "4.5.53", features = ["derive"] }
 dirs = "6"
+editpe = { version = "0.2", default-features = false, features = ["std", "images"] }
 graft-core = { path = "../graft-core" }
 icns = "0.3.1"
 ureq = "3"

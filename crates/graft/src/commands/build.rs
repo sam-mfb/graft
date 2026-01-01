@@ -6,10 +6,11 @@
 //! For macOS targets, modifies stub .app bundles with patch data and custom metadata.
 
 use crate::commands::macos_bundle::{self, BundleError};
+use crate::commands::windows_icon::{self, WindowsIconError};
 use crate::stubs::{self, StubError};
 use crate::targets;
 use graft_core::archive::{self, MAGIC_MARKER};
-use graft_core::patch;
+use graft_core::patch::{self, ASSETS_DIR, ICON_FILENAME};
 use graft_core::utils::manifest::PatchInfo;
 use std::fs;
 use std::io::{self, Write};
@@ -30,6 +31,8 @@ pub enum PatcherError {
     InvalidTarget(String),
     /// Failed to create macOS bundle.
     BundleError(BundleError),
+    /// Failed to embed Windows icon.
+    WindowsIconError(WindowsIconError),
 }
 
 impl std::fmt::Display for PatcherError {
@@ -41,6 +44,7 @@ impl std::fmt::Display for PatcherError {
             PatcherError::OutputError(e) => write!(f, "Output error: {}", e),
             PatcherError::InvalidTarget(t) => write!(f, "Invalid target: {}", t),
             PatcherError::BundleError(e) => write!(f, "Bundle creation failed: {}", e),
+            PatcherError::WindowsIconError(e) => write!(f, "Windows icon embedding failed: {}", e),
         }
     }
 }
@@ -52,6 +56,7 @@ impl std::error::Error for PatcherError {
             PatcherError::StubError(e) => Some(e),
             PatcherError::OutputError(e) => Some(e),
             PatcherError::BundleError(e) => Some(e),
+            PatcherError::WindowsIconError(e) => Some(e),
             _ => None,
         }
     }
@@ -145,6 +150,19 @@ pub fn run(
         io::stdout().flush().ok();
 
         fs::write(&output, &executable_data).map_err(PatcherError::OutputError)?;
+        println!("done");
+
+        // Embed icon for Windows targets
+        if target.name.starts_with("windows-") {
+            let icon_path = patch_dir.join(ASSETS_DIR).join(ICON_FILENAME);
+            if icon_path.exists() {
+                print!("Embedding icon... ");
+                io::stdout().flush().ok();
+                windows_icon::embed_icon(&output, &icon_path)
+                    .map_err(PatcherError::WindowsIconError)?;
+                println!("done");
+            }
+        }
 
         // Make executable on Unix
         #[cfg(unix)]
@@ -157,7 +175,6 @@ pub fn run(
             fs::set_permissions(&output, perms).map_err(PatcherError::OutputError)?;
         }
 
-        println!("done");
         println!();
         println!("Created: {} ({} bytes)", output.display(), total_size);
     }
