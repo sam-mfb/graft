@@ -5,20 +5,15 @@ edition = "2024"
 
 [features]
 default = []
-# Embed only the native platform's stub (for local dev/testing)
-# Requires GRAFT_NATIVE_STUB env var pointing to the stub binary
-native-stub = []
 # Embed all platform stubs (for CI releases)
 # Requires GRAFT_STUBS_DIR env var pointing to directory with all stubs
 embedded-stubs = []
 
 [dependencies]
 clap = { version = "4.5.53", features = ["derive"] }
-dirs = "6"
 editpe = { version = "0.2", default-features = false, features = ["std", "images"] }
 graft-core = { path = "../graft-core" }
 icns = "0.3.1"
-ureq = "3"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 
 [dev-dependencies]

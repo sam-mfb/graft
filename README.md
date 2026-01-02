@@ -9,13 +9,13 @@ Binary patching toolkit for creating and applying patches to files.
 graft patch create original/ modified/ my-patch/ --title "My Game Patcher"
 
 # 2. Create self-contained patchers for distribution
-graft build create my-patch/ --target linux-x64 -o my-patcher-linux
-graft build create my-patch/ --target windows-x64 -o my-patcher.exe
-graft build create my-patch/ --target macos-arm64 -o my-patcher-macos
+graft build my-patch/ -o ./output                             # All available platforms
+graft build my-patch/ -o ./output --target linux-x64          # Single platform
+graft build my-patch/ -o ./output -t linux-x64 -t windows-x64 # Multiple platforms
 
 # 3. End users just run the patcher
-./my-patcher-linux                              # GUI mode
-./my-patcher-linux headless apply /target -y   # CLI mode
+./output/patcher-linux-x64                              # GUI mode
+./output/patcher-linux-x64 headless apply /target -y   # CLI mode
 ```
 
 ## Project Structure
@@ -158,18 +158,51 @@ The `--force` flag skips validation of target files (use when files have been mo
 
 The `graft build` command creates standalone patcher executables by appending patch data to pre-built stub binaries. No Rust toolchain required!
 
-### Usage
+Check your graft version to see if you're in production or development mode:
 
 ```bash
-# List available target platforms
-graft build targets
-
-# Create a patcher for the current platform
-graft build create <patch-dir> [-o <output-file>]
-
-# Create a patcher for a specific target
-graft build create <patch-dir> --target <target> [-o <output-file>]
+graft --version
+# graft 0.3.0 (production)  - has embedded stubs
+# graft 0.3.0 (development) - requires --stub-dir
 ```
+
+### Production (with embedded stubs)
+
+When built with `--features embedded-stubs`, graft has all platform stubs embedded:
+
+```bash
+graft build ./my-patch -o ./output                              # Build for all platforms
+graft build ./my-patch -o ./output --target linux-x64           # Single target
+graft build ./my-patch -o ./output -t linux-x64 -t windows-x64  # Multiple targets
+graft build ./my-patch -o ./output --stub-dir ./custom          # Override with custom stubs
+```
+
+Output files are created in the output directory:
+- `./output/patcher-linux-x64`
+- `./output/patcher-windows-x64.exe`
+- `./output/patcher-macos-arm64.app/`
+
+### Development (without embedded stubs)
+
+Development builds require `--stub-dir` pointing to stub binaries:
+
+```bash
+# First, build the GUI stub
+cargo build -p graft-gui --release
+mkdir -p ./stubs
+cp target/release/graft-gui ./stubs/graft-gui-stub-linux-x64
+
+# Then build patchers
+graft build ./my-patch -o ./output --stub-dir ./stubs
+graft build ./my-patch -o ./output --stub-dir ./stubs --target linux-x64
+```
+
+Stub files must follow the naming convention:
+- `graft-gui-stub-linux-x64`
+- `graft-gui-stub-linux-arm64`
+- `graft-gui-stub-windows-x64.exe`
+- `graft-gui-stub-macos-x64.app.zip`
+- `graft-gui-stub-macos-arm64.app.zip`
 
 ### Example
 
@@ -177,13 +210,13 @@ graft build create <patch-dir> --target <target> [-o <output-file>]
 # Create a patch with a custom window title
 graft patch create original/ modified/ my-patch/ --title "My Game Patcher"
 
-# Build a self-contained patcher
-graft build create my-patch/ -o my-patcher
+# Build self-contained patchers (production mode)
+graft build my-patch/ -o ./output
 
-# The resulting binary can be distributed and run:
-./my-patcher                              # GUI mode
-./my-patcher headless apply /target -y   # CLI mode (apply)
-./my-patcher headless rollback /target   # CLI mode (rollback)
+# The resulting binaries can be distributed and run:
+./output/patcher-linux-x64                              # GUI mode
+./output/patcher-linux-x64 headless apply /target -y   # CLI mode (apply)
+./output/patcher-linux-x64 headless rollback /target   # CLI mode (rollback)
 ```
 
 ### Available Targets
@@ -195,15 +228,6 @@ graft build create my-patch/ -o my-patcher
 | `windows-x64` | Windows x86_64 |
 | `macos-x64` | macOS x86_64 |
 | `macos-arm64` | macOS ARM64 (Apple Silicon) |
-
-### Cross-Platform Example
-
-```bash
-# Create patchers for multiple platforms
-graft build create my-patch/ --target linux-x64 -o my-patcher-linux
-graft build create my-patch/ --target windows-x64 -o my-patcher.exe
-graft build create my-patch/ --target macos-arm64 -o my-patcher-macos
-```
 
 ### How It Works
 
@@ -252,22 +276,26 @@ If no custom icon is provided, a default graft icon is used.
 cargo build --release -p graft
 ```
 
-When building from source without the `embedded-stubs` feature, stubs are downloaded from GitHub releases on first use and cached in `~/.cache/graft/stubs/`.
+When building from source without the `embedded-stubs` feature (development mode), you must provide stub binaries via `--stub-dir`.
 
 ### Build Features
 
 | Feature | Description |
 |---------|-------------|
-| (default) | Downloads stubs from GitHub releases on demand |
-| `native-stub` | Embeds only the current platform's stub (Linux only) |
+| (default) | Development mode - requires `--stub-dir` argument |
 | `embedded-stubs` | Embeds all platform stubs (used for releases) |
 
-**Note:** The `native-stub` feature only works on Linux. On macOS and Windows, stubs are downloaded from GitHub releases on first use. This is because macOS requires `.app` bundles which are more complex to embed during local development.
+### Building with Embedded Stubs (CI/Release)
 
-### Stub Version (Development)
-
-When using downloaded stubs, they come from the latest release by default. To pin to a specific version:
+To build graft with embedded stubs for distribution:
 
 ```bash
-GRAFT_STUB_VERSION=0.1.0 graft patcher create my-patch/ -o my-patcher
+# Prepare stubs directory with all platform stubs
+mkdir -p ./stubs
+# ... copy stub binaries from CI artifacts ...
+
+# Build graft with embedded stubs
+GRAFT_STUBS_DIR=./stubs cargo build -p graft --release --features embedded-stubs
 ```
+
+The resulting binary will show "production" in version output and won't require `--stub-dir`.

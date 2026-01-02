@@ -4,10 +4,22 @@ use std::process;
 use clap::{Parser, Subcommand};
 use graft::commands::check::CheckResult;
 
+fn version_string() -> &'static str {
+    #[cfg(feature = "embedded-stubs")]
+    {
+        concat!(env!("CARGO_PKG_VERSION"), " (production)")
+    }
+
+    #[cfg(not(feature = "embedded-stubs"))]
+    {
+        concat!(env!("CARGO_PKG_VERSION"), " (development)")
+    }
+}
+
 #[derive(Parser)]
 #[command(name = "graft")]
 #[command(about = "Binary patching toolkit")]
-#[command(version)]
+#[command(version = version_string())]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -31,30 +43,49 @@ enum Commands {
         command: PatchCommands,
     },
     /// Build standalone patcher executables
-    Build {
-        #[command(subcommand)]
-        command: BuildCommands,
-    },
+    Build(BuildArgs),
 }
 
-#[derive(Subcommand)]
-enum BuildCommands {
-    /// Create a self-contained patcher executable
-    Create {
-        /// Path to the patch directory (containing manifest.json)
-        patch_dir: PathBuf,
+/// Build arguments for production mode (with embedded stubs)
+#[cfg(feature = "embedded-stubs")]
+#[derive(clap::Args, Debug)]
+struct BuildArgs {
+    /// Path to the patch directory (containing manifest.json)
+    patch_dir: PathBuf,
 
-        /// Target platform (linux-x64, linux-arm64, windows-x64, macos-x64, macos-arm64)
-        #[arg(short, long)]
-        target: Option<String>,
+    /// Output directory for patcher executables
+    #[arg(short, long)]
+    output: PathBuf,
 
-        /// Output file path
-        #[arg(short, long)]
-        output: Option<PathBuf>,
-    },
+    /// Directory containing stub binaries (overrides embedded stubs)
+    #[arg(long)]
+    stub_dir: Option<PathBuf>,
 
-    /// List available target platforms
-    Targets,
+    /// Target platform(s) to build for. Repeat for multiple.
+    /// Available: linux-x64, linux-arm64, windows-x64, macos-x64, macos-arm64
+    #[arg(short, long)]
+    target: Vec<String>,
+}
+
+/// Build arguments for development mode (no embedded stubs)
+#[cfg(not(feature = "embedded-stubs"))]
+#[derive(clap::Args, Debug)]
+struct BuildArgs {
+    /// Path to the patch directory (containing manifest.json)
+    patch_dir: PathBuf,
+
+    /// Output directory for patcher executables
+    #[arg(short, long)]
+    output: PathBuf,
+
+    /// Directory containing stub binaries (required in development mode)
+    #[arg(long)]
+    stub_dir: PathBuf,
+
+    /// Target platform(s) to build for. Repeat for multiple.
+    /// Available: linux-x64, linux-arm64, windows-x64, macos-x64, macos-arm64
+    #[arg(short, long)]
+    target: Vec<String>,
 }
 
 #[derive(Subcommand)]
@@ -260,16 +291,14 @@ fn main() {
                 }
             }
         },
-        Commands::Build { command } => match command {
-            BuildCommands::Create {
-                patch_dir,
-                target,
-                output,
-            } => {
+        Commands::Build(args) => {
+            #[cfg(feature = "embedded-stubs")]
+            {
                 match graft::commands::build::run(
-                    &patch_dir,
-                    target.as_deref(),
-                    output.as_deref(),
+                    &args.patch_dir,
+                    &args.output,
+                    args.stub_dir.as_deref(),
+                    &args.target,
                 ) {
                     Ok(()) => {}
                     Err(e) => {
@@ -278,16 +307,22 @@ fn main() {
                     }
                 }
             }
-            BuildCommands::Targets => {
-                println!("Available targets:");
-                for target in graft::targets::ALL_TARGETS {
-                    let current = graft::targets::current_target()
-                        .map(|t| t.name == target.name)
-                        .unwrap_or(false);
-                    let marker = if current { " (current)" } else { "" };
-                    println!("  {}{}", target.name, marker);
+
+            #[cfg(not(feature = "embedded-stubs"))]
+            {
+                match graft::commands::build::run(
+                    &args.patch_dir,
+                    &args.output,
+                    &args.stub_dir,
+                    &args.target,
+                ) {
+                    Ok(()) => {}
+                    Err(e) => {
+                        eprintln!("Error: {}", e);
+                        process::exit(2);
+                    }
                 }
             }
-        },
+        }
     }
 }

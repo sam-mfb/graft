@@ -8,13 +8,24 @@
 use crate::commands::macos_bundle::{self, BundleError};
 use crate::commands::windows_icon::{self, WindowsIconError};
 use crate::stubs::{self, StubError};
-use crate::targets;
+use crate::targets::{self, Target};
+#[cfg(feature = "embedded-stubs")]
+use crate::targets::ALL_TARGETS;
 use graft_core::archive::{self, MAGIC_MARKER};
 use graft_core::patch::{self, ASSETS_DIR, ICON_FILENAME};
 use graft_core::utils::manifest::PatchInfo;
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+
+/// Source for stub binaries.
+enum StubSource<'a> {
+    /// Use stubs from a directory.
+    Directory(&'a Path),
+    /// Use embedded stubs (production mode only).
+    #[cfg(feature = "embedded-stubs")]
+    Embedded,
+}
 
 /// Errors from patcher creation.
 #[derive(Debug)]
@@ -62,26 +73,120 @@ impl std::error::Error for PatcherError {
     }
 }
 
-/// Create a self-appending patcher executable.
+/// Output filename for a target.
+fn output_filename(target: &Target) -> String {
+    if target.stub_is_bundle {
+        format!("patcher-{}.app", target.name)
+    } else {
+        format!("patcher-{}{}", target.name, target.binary_suffix)
+    }
+}
+
+/// Resolve target list. If empty, returns all available targets for the stub source.
+fn resolve_targets(
+    stub_source: &StubSource<'_>,
+    target_names: &[String],
+) -> Result<Vec<Target>, PatcherError> {
+    if target_names.is_empty() {
+        // Default to all available targets
+        let available: Vec<Target> = match stub_source {
+            StubSource::Directory(dir) => {
+                stubs::find_available_targets_in_dir(dir)
+                    .into_iter()
+                    .copied()
+                    .collect()
+            }
+            #[cfg(feature = "embedded-stubs")]
+            StubSource::Embedded => ALL_TARGETS.to_vec(),
+        };
+        if available.is_empty() {
+            return Err(PatcherError::InvalidTarget(
+                "No stubs available for any target".to_string(),
+            ));
+        }
+        Ok(available)
+    } else {
+        // Parse specified targets
+        target_names
+            .iter()
+            .map(|name| {
+                targets::parse_target(name)
+                    .ok_or_else(|| PatcherError::InvalidTarget(name.clone()))
+            })
+            .collect()
+    }
+}
+
+/// Create a patcher executable (production mode with embedded stubs).
 ///
 /// # Arguments
 /// * `patch_dir` - Path to the patch directory (containing manifest.json)
-/// * `target_name` - Optional target platform name (defaults to current platform)
-/// * `output_path` - Optional output file path (defaults to ./patcher, ./patcher.exe, or ./patcher.app)
+/// * `output_dir` - Output directory for patcher executables
+/// * `stub_dir` - Optional directory with stubs (overrides embedded)
+/// * `targets` - Target platforms to build for (empty = all available)
+#[cfg(feature = "embedded-stubs")]
 pub fn run(
     patch_dir: &Path,
-    target_name: Option<&str>,
-    output_path: Option<&Path>,
+    output_dir: &Path,
+    stub_dir: Option<&Path>,
+    targets: &[String],
 ) -> Result<(), PatcherError> {
-    // 1. Resolve target
-    let target = match target_name {
-        Some(name) => targets::parse_target(name)
-            .ok_or_else(|| PatcherError::InvalidTarget(name.to_string()))?,
-        None => targets::current_target()
-            .ok_or_else(|| PatcherError::InvalidTarget("current platform not supported".to_string()))?,
+    let stub_source = match stub_dir {
+        Some(dir) => StubSource::Directory(dir),
+        None => StubSource::Embedded,
     };
 
-    // 2. Validate patch directory
+    let targets_to_build = resolve_targets(&stub_source, targets)?;
+
+    // Ensure output directory exists
+    fs::create_dir_all(output_dir).map_err(PatcherError::OutputError)?;
+
+    for target in &targets_to_build {
+        build_single(patch_dir, target, output_dir, &stub_source)?;
+    }
+
+    Ok(())
+}
+
+/// Create a patcher executable (development mode without embedded stubs).
+///
+/// # Arguments
+/// * `patch_dir` - Path to the patch directory (containing manifest.json)
+/// * `output_dir` - Output directory for patcher executables
+/// * `stub_dir` - Directory containing stub binaries (required)
+/// * `targets` - Target platforms to build for (empty = all available)
+#[cfg(not(feature = "embedded-stubs"))]
+pub fn run(
+    patch_dir: &Path,
+    output_dir: &Path,
+    stub_dir: &Path,
+    targets: &[String],
+) -> Result<(), PatcherError> {
+    println!("Development mode: no embedded stubs");
+    println!("Using stubs from: {}", stub_dir.display());
+    println!();
+
+    let stub_source = StubSource::Directory(stub_dir);
+    let targets_to_build = resolve_targets(&stub_source, targets)?;
+
+    // Ensure output directory exists
+    fs::create_dir_all(output_dir).map_err(PatcherError::OutputError)?;
+
+    for target in &targets_to_build {
+        build_single(patch_dir, target, output_dir, &stub_source)?;
+    }
+
+    Ok(())
+}
+
+/// Build a patcher for a single target.
+fn build_single(
+    patch_dir: &Path,
+    target: &Target,
+    output_dir: &Path,
+    stub_source: &StubSource<'_>,
+) -> Result<(), PatcherError> {
+    // Validate patch directory
     let manifest = patch::validate_patch_dir(patch_dir)
         .map_err(|e| PatcherError::PatchValidation(e.to_string()))?;
     let info = PatchInfo::from_manifest(&manifest);
@@ -92,44 +197,22 @@ pub fn run(
     );
     println!("Target: {}", target.name);
 
-    // 3. Create archive
+    // Create archive
     print!("Creating patch archive... ");
     io::stdout().flush().ok();
     let archive_data =
         archive::create_archive_bytes(patch_dir).map_err(PatcherError::ArchiveCreation)?;
     println!("done ({} bytes)", archive_data.len());
 
-    // 4. Determine output path
-    let output = match output_path {
-        Some(p) => {
-            // For macOS bundles, ensure path ends with .app
-            if target.stub_is_bundle {
-                let path_str = p.to_string_lossy();
-                if path_str.ends_with(".app") {
-                    p.to_path_buf()
-                } else {
-                    PathBuf::from(format!("{}.app", path_str))
-                }
-            } else {
-                p.to_path_buf()
-            }
-        }
-        None => {
-            if target.stub_is_bundle {
-                Path::new(".").join("patcher.app")
-            } else {
-                let name = format!("patcher{}", target.binary_suffix);
-                Path::new(".").join(name)
-            }
-        }
-    };
+    // Determine output path
+    let output = output_dir.join(output_filename(target));
 
-    // 5. Build patcher based on target type
+    // Build patcher based on target type
     if target.stub_is_bundle {
         // macOS: Get stub bundle, copy and modify it
         print!("Getting stub bundle... ");
         io::stdout().flush().ok();
-        let stub_bundle_path = stubs::get_stub_bundle(&target).map_err(PatcherError::StubError)?;
+        let stub_bundle_path = get_stub_bundle(target, stub_source)?;
         println!("done");
 
         print!("Creating macOS bundle at {}... ", output.display());
@@ -152,7 +235,7 @@ pub fn run(
         // Other platforms: Get stub binary, concatenate with archive
         print!("Getting stub binary... ");
         io::stdout().flush().ok();
-        let stub_data = stubs::get_stub(&target).map_err(PatcherError::StubError)?;
+        let stub_data = get_stub(target, stub_source)?;
         println!("done ({} bytes)", stub_data.len());
 
         let executable_data = create_executable_bytes(&stub_data, &archive_data);
@@ -194,6 +277,30 @@ pub fn run(
     Ok(())
 }
 
+/// Get stub binary from the appropriate source.
+fn get_stub(target: &Target, stub_source: &StubSource<'_>) -> Result<Vec<u8>, PatcherError> {
+    match stub_source {
+        StubSource::Directory(dir) => {
+            stubs::read_stub_from_dir(dir, target).map_err(PatcherError::StubError)
+        }
+        #[cfg(feature = "embedded-stubs")]
+        StubSource::Embedded => stubs::get_embedded_stub(target).map_err(PatcherError::StubError),
+    }
+}
+
+/// Get stub bundle path from the appropriate source.
+fn get_stub_bundle(target: &Target, stub_source: &StubSource<'_>) -> Result<PathBuf, PatcherError> {
+    match stub_source {
+        StubSource::Directory(dir) => {
+            stubs::read_stub_bundle_from_dir(dir, target).map_err(PatcherError::StubError)
+        }
+        #[cfg(feature = "embedded-stubs")]
+        StubSource::Embedded => {
+            stubs::get_embedded_stub_bundle(target).map_err(PatcherError::StubError)
+        }
+    }
+}
+
 /// Create the combined executable bytes (stub + archive + size + magic).
 fn create_executable_bytes(stub_data: &[u8], archive_data: &[u8]) -> Vec<u8> {
     let mut data = Vec::with_capacity(stub_data.len() + archive_data.len() + 16);
@@ -222,13 +329,29 @@ mod tests {
     #[test]
     fn run_fails_with_invalid_patch_dir() {
         let temp = tempdir().unwrap();
-        let result = run(temp.path(), None, None);
+        let output_dir = temp.path().join("output");
+        let stub_dir = temp.path().join("stubs");
+        fs::create_dir_all(&stub_dir).unwrap();
+
+        // Specify a target to bypass stub availability check
+        let targets = vec!["linux-x64".to_string()];
+
+        #[cfg(feature = "embedded-stubs")]
+        let result = run(temp.path(), &output_dir, Some(&stub_dir), &targets);
+
+        #[cfg(not(feature = "embedded-stubs"))]
+        let result = run(temp.path(), &output_dir, &stub_dir, &targets);
+
         assert!(matches!(result, Err(PatcherError::PatchValidation(_))));
     }
 
     #[test]
     fn run_fails_with_invalid_target() {
         let temp = tempdir().unwrap();
+        let output_dir = temp.path().join("output");
+        let stub_dir = temp.path().join("stubs");
+        fs::create_dir_all(&stub_dir).unwrap();
+
         // Create minimal patch structure
         fs::write(
             temp.path().join("manifest.json"),
@@ -236,7 +359,14 @@ mod tests {
         )
         .unwrap();
 
-        let result = run(temp.path(), Some("invalid-target"), None);
+        let targets = vec!["invalid-target".to_string()];
+
+        #[cfg(feature = "embedded-stubs")]
+        let result = run(temp.path(), &output_dir, Some(&stub_dir), &targets);
+
+        #[cfg(not(feature = "embedded-stubs"))]
+        let result = run(temp.path(), &output_dir, &stub_dir, &targets);
+
         assert!(matches!(result, Err(PatcherError::InvalidTarget(_))));
     }
 }
