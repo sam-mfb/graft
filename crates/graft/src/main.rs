@@ -144,7 +144,7 @@ enum PatchCommands {
         /// Output directory for patch files
         output: PathBuf,
         /// Manifest version number
-        #[arg(long, default_value = "1")]
+        #[arg(short = 'v', long)]
         version: u32,
         /// Window title for the patcher application
         #[arg(long)]

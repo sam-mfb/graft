@@ -6,7 +6,7 @@ Binary patching toolkit for creating and applying patches to files.
 
 ```bash
 # 1. Create a patch from original and modified directories
-graft patch create original/ modified/ my-patch/ --title "My Game Patcher"
+graft patch create original/ modified/ my-patch/ -v 1 --title "My Game Patcher"
 
 # 2. Create self-contained patchers for distribution
 graft build my-patch/ -o ./output                             # All available platforms
@@ -69,7 +69,7 @@ graft hash check <hash> <file>
 
 Create a patch from two directories:
 ```
-graft patch create <original-dir> <modified-dir> <patch-output-dir>
+graft patch create <original-dir> <modified-dir> <patch-output-dir> -v <version>
 ```
 
 This compares the directories and generates:
@@ -108,7 +108,7 @@ By default, patches are blocked from modifying sensitive locations to prevent mi
 
 To create a patch that can target these locations (for trusted use cases):
 ```bash
-graft patch create original/ modified/ my-patch/ --allow-restricted
+graft patch create original/ modified/ my-patch/ -v 1 --allow-restricted
 ```
 
 This sets `"allow_restricted": true` in the manifest. Without this flag, patches default to `allow_restricted: false` and will be rejected if they attempt to modify restricted paths.
@@ -208,7 +208,7 @@ Stub files must follow the naming convention:
 
 ```bash
 # Create a patch with a custom window title
-graft patch create original/ modified/ my-patch/ --title "My Game Patcher"
+graft patch create original/ modified/ my-patch/ -v 1 --title "My Game Patcher"
 
 # Build self-contained patchers (production mode)
 graft build my-patch/ -o ./output
@@ -245,7 +245,7 @@ This means you can create patchers for any platform from any platform - no cross
 
 Set a custom window title when creating the patch:
 ```bash
-graft patch create original/ modified/ my-patch/ --title "My Game Patcher"
+graft patch create original/ modified/ my-patch/ -v 1 --title "My Game Patcher"
 ```
 
 Or edit `my-patch/manifest.json` directly to change the `"title"` field.
