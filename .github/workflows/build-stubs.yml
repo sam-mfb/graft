@@ -16,10 +16,10 @@ jobs:
             target: x86_64-unknown-linux-gnu
             name: linux-x64
             cross: false
-          - os: ubuntu-latest
+          - os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
             name: linux-arm64
-            cross: true
+            cross: false
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             name: windows-x64
