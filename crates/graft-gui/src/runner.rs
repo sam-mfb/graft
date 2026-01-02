@@ -284,9 +284,59 @@ impl PatchRunner {
     pub fn delete_backup(target: &Path) -> std::io::Result<()> {
         let backup_dir = target.join(BACKUP_DIR);
         if backup_dir.exists() {
-            fs::remove_dir_all(&backup_dir)?;
+            remove_dir_all_robust(&backup_dir)?;
         }
         Ok(())
+    }
+}
+
+/// Robust directory removal that handles Windows read-only files.
+///
+/// On Windows, `fs::remove_dir_all` can fail with error 87 (ERROR_INVALID_PARAMETER)
+/// when files have read-only attributes. This function clears the attribute before deletion.
+fn remove_dir_all_robust(path: &Path) -> std::io::Result<()> {
+    if path.is_dir() {
+        for entry in fs::read_dir(path)? {
+            let entry = entry?;
+            let entry_path = entry.path();
+            if entry_path.is_dir() {
+                remove_dir_all_robust(&entry_path)?;
+            } else {
+                remove_file_robust(&entry_path)?;
+            }
+        }
+        fs::remove_dir(path)
+    } else {
+        remove_file_robust(path)
+    }
+}
+
+/// Remove a file, handling Windows read-only attribute.
+fn remove_file_robust(path: &Path) -> std::io::Result<()> {
+    // Try normal removal first
+    match fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(e) => {
+            // On Windows, try clearing read-only attribute and retry
+            #[cfg(windows)]
+            {
+                use std::os::windows::fs::MetadataExt;
+                const FILE_ATTRIBUTE_READONLY: u32 = 0x1;
+
+                if let Ok(metadata) = fs::metadata(path) {
+                    let attrs = metadata.file_attributes();
+                    if attrs & FILE_ATTRIBUTE_READONLY != 0 {
+                        // Clear read-only and retry
+                        let mut perms = metadata.permissions();
+                        perms.set_readonly(false);
+                        if fs::set_permissions(path, perms).is_ok() {
+                            return fs::remove_file(path);
+                        }
+                    }
+                }
+            }
+            Err(e)
+        }
     }
 }
 
