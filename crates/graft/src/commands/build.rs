@@ -14,7 +14,7 @@ use graft_core::patch::{self, ASSETS_DIR, ICON_FILENAME};
 use graft_core::utils::manifest::PatchInfo;
 use std::fs;
 use std::io::{self, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Errors from patcher creation.
 #[derive(Debug)]
@@ -101,7 +101,19 @@ pub fn run(
 
     // 4. Determine output path
     let output = match output_path {
-        Some(p) => p.to_path_buf(),
+        Some(p) => {
+            // For macOS bundles, ensure path ends with .app
+            if target.stub_is_bundle {
+                let path_str = p.to_string_lossy();
+                if path_str.ends_with(".app") {
+                    p.to_path_buf()
+                } else {
+                    PathBuf::from(format!("{}.app", path_str))
+                }
+            } else {
+                p.to_path_buf()
+            }
+        }
         None => {
             if target.stub_is_bundle {
                 Path::new(".").join("patcher.app")
