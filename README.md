@@ -9,11 +9,12 @@ Binary patching toolkit for creating and applying patches to files.
 graft patch create original/ modified/ my-patch/ -v 1 --name MyPatcher --title "My Game Patcher"
 
 # 2. Create self-contained patchers for distribution
+#    -o specifies the OUTPUT DIRECTORY (not filename)
 graft build my-patch/ -o ./output                             # All available platforms
 graft build my-patch/ -o ./output --target linux-x64          # Single platform
 graft build my-patch/ -o ./output -t linux-x64 -t windows-x64 # Multiple platforms
 
-# 3. End users just run the patcher
+# 3. End users just run the patcher (filenames derived from --name)
 ./output/MyPatcher-linux-x64                              # GUI mode
 ./output/MyPatcher-linux-x64 headless apply /target -y   # CLI mode
 ```
@@ -180,7 +181,7 @@ graft build ./my-patch -o ./output -t linux-x64 -t windows-x64  # Multiple targe
 graft build ./my-patch -o ./output --stub-dir ./custom          # Override with custom stubs
 ```
 
-Output files are created in the output directory (using the `--name` from patch creation):
+**Note:** The `-o` option specifies an output **directory**, not a filename. Patcher files are created inside this directory with names derived from the `--name` specified during patch creation:
 - `./output/MyPatcher-linux-x64`
 - `./output/MyPatcher-windows-x64.exe`
 - `./output/MyPatcher-macos-arm64.app/`
