@@ -65,10 +65,7 @@ impl fmt::Display for PatchError {
                 for v in violations {
                     writeln!(f, "  - {}", v)?;
                 }
-                write!(
-                    f,
-                    "Set \"allow_restricted\": true in manifest.json to bypass (for trusted patches only)."
-                )
+                Ok(())
             }
         }
     }

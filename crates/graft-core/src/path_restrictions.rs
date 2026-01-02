@@ -105,7 +105,7 @@ const BLOCKED_EXTENSIONS_MACOS: &[&str] = &[".dylib", ".bundle", ".kext"];
 #[cfg(target_os = "linux")]
 const BLOCKED_EXTENSIONS_LINUX: &[&str] = &[".so", ".ko"];
 
-const BLOCKED_EXTENSIONS_CROSS_PLATFORM: &[&str] = &[".sh", ".bin"];
+const BLOCKED_EXTENSIONS_CROSS_PLATFORM: &[&str] = &[".sh"];
 
 /// Check if a file has a blocked extension.
 fn check_blocked_extension(file: &str) -> Result<(), RestrictionViolation> {
@@ -297,12 +297,12 @@ mod tests {
     #[test]
     fn blocked_extensions_cross_platform() {
         assert!(check_blocked_extension("script.sh").is_err());
-        assert!(check_blocked_extension("program.bin").is_err());
     }
 
     #[test]
     fn normal_extensions_allowed() {
         assert!(check_blocked_extension("data.dat").is_ok());
+        assert!(check_blocked_extension("data.bin").is_ok()); // .bin is allowed (common for game data)
         assert!(check_blocked_extension("texture.png").is_ok());
         assert!(check_blocked_extension("config.json").is_ok());
         assert!(check_blocked_extension("readme.txt").is_ok());

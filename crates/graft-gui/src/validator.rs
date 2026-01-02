@@ -69,3 +69,30 @@ impl std::fmt::Display for PatchValidationError {
 }
 
 impl std::error::Error for PatchValidationError {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use graft_core::archive::create_archive_bytes;
+    use std::fs;
+    use tempfile::tempdir;
+
+    #[test]
+    fn extracts_title_from_archive() {
+        let patch_dir = tempdir().unwrap();
+
+        // Create manifest with title
+        fs::write(
+            patch_dir.path().join("manifest.json"),
+            r#"{"version": 1, "title": "My Test Title", "entries": []}"#,
+        )
+        .unwrap();
+
+        // Create archive
+        let archive_data = create_archive_bytes(patch_dir.path()).unwrap();
+
+        // Validate and check title
+        let info = PatchValidator::validate(&archive_data).unwrap();
+        assert_eq!(info.title, Some("My Test Title".to_string()));
+    }
+}

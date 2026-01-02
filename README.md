@@ -104,7 +104,7 @@ By default, patches are blocked from modifying sensitive locations to prevent mi
 - Path traversal (`../` sequences)
 - System directories (`/usr`, `/bin`, `/etc`, `C:\Windows`, etc.)
 - macOS `.app` bundles
-- Executable files (`.exe`, `.dll`, `.so`, `.dylib`, `.sh`, `.bin`, etc.)
+- Executable files (`.exe`, `.dll`, `.so`, `.dylib`, `.sh`, etc.)
 
 To create a patch that can target these locations (for trusted use cases):
 ```bash

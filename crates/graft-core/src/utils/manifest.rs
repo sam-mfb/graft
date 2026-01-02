@@ -238,4 +238,14 @@ mod tests {
         assert_eq!(add.file(), "b.bin");
         assert_eq!(delete.file(), "c.bin");
     }
+
+    #[test]
+    fn title_is_deserialized() {
+        let json = r#"{"version": 1, "title": "My Custom Title", "entries": []}"#;
+        let temp_file = NamedTempFile::new().unwrap();
+        fs::write(temp_file.path(), json).unwrap();
+
+        let manifest = Manifest::load(temp_file.path()).unwrap();
+        assert_eq!(manifest.title, Some("My Custom Title".to_string()));
+    }
 }
