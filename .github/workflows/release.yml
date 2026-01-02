@@ -182,6 +182,7 @@ jobs:
 
       - name: Build CLI with embedded stubs (native)
         if: ${{ !matrix.cross }}
+        shell: bash
         env:
           GRAFT_STUBS_DIR: ${{ github.workspace }}/stubs
         run: |
