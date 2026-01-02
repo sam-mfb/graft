@@ -177,6 +177,7 @@ jobs:
           merge-multiple: true
 
       - name: List stubs
+        shell: bash
         run: ls -la stubs/
 
       - name: Build CLI with embedded stubs (native)
