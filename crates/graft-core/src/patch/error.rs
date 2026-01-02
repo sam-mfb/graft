@@ -1,3 +1,4 @@
+use crate::path_restrictions::RestrictionViolation;
 use std::fmt;
 
 /// Error type for patch operations.
@@ -21,6 +22,8 @@ pub enum PatchError {
     RollbackFailed { reason: String },
     /// Error with manifest
     ManifestError { reason: String },
+    /// Path restrictions violated (system dirs, executables, etc.)
+    RestrictedPaths(Vec<RestrictionViolation>),
 }
 
 impl fmt::Display for PatchError {
@@ -56,6 +59,16 @@ impl fmt::Display for PatchError {
             }
             PatchError::ManifestError { reason } => {
                 write!(f, "manifest error: {}", reason)
+            }
+            PatchError::RestrictedPaths(violations) => {
+                writeln!(f, "cannot patch restricted paths:")?;
+                for v in violations {
+                    writeln!(f, "  - {}", v)?;
+                }
+                write!(
+                    f,
+                    "Set \"allow_restricted\": true in manifest.json to bypass (for trusted patches only)."
+                )
             }
         }
     }

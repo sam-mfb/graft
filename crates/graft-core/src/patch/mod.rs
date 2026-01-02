@@ -46,5 +46,5 @@ pub use apply::{apply_entries, apply_entry};
 pub use backup::{backup_entries, rollback};
 pub use constants::{ASSETS_DIR, BACKUP_DIR, DIFFS_DIR, DIFF_EXTENSION, FILES_DIR, ICON_FILENAME, MANIFEST_FILENAME};
 pub use error::PatchError;
-pub use validate::{validate_backup, validate_entries, validate_patch_dir, validate_patched_entries};
+pub use validate::{validate_backup, validate_entries, validate_patch_dir, validate_patched_entries, validate_path_restrictions};
 pub use verify::verify_entry;

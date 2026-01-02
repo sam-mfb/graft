@@ -117,6 +117,9 @@ enum PatchCommands {
         /// Window title for the patcher application
         #[arg(long)]
         title: Option<String>,
+        /// Allow patching restricted paths (system dirs, executables)
+        #[arg(long)]
+        allow_restricted: bool,
     },
     /// Apply a patch to a target directory
     Apply {
@@ -221,8 +224,9 @@ fn main() {
                 output,
                 version,
                 title,
+                allow_restricted,
             } => {
-                match graft::commands::patch_create::run(&orig, &new, &output, version, title.as_deref()) {
+                match graft::commands::patch_create::run(&orig, &new, &output, version, title.as_deref(), allow_restricted) {
                     Ok(()) => {
                         println!("Patch created at {}", output.display());
                     }

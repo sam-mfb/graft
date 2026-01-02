@@ -13,12 +13,16 @@ const DEFAULT_ICON: &[u8] = include_bytes!("../../assets/default_icon.png");
 
 /// Create a patch from two directories.
 /// Outputs a patch directory containing manifest.json, diffs/, and files/.
+///
+/// If `allow_restricted` is true, the resulting manifest will allow patching
+/// restricted paths (system directories, executables). Default is false for security.
 pub fn run(
     orig_dir: &Path,
     new_dir: &Path,
     output_dir: &Path,
     version: u32,
     title: Option<&str>,
+    allow_restricted: bool,
 ) -> io::Result<()> {
     let changes = categorize_files(orig_dir, new_dir)?;
 
@@ -39,6 +43,7 @@ pub fn run(
     }
 
     let mut manifest = Manifest::new(version, title.map(|s| s.to_string()));
+    manifest.allow_restricted = allow_restricted;
 
     for change in changes {
         let entry = match change {
@@ -120,7 +125,7 @@ mod tests {
         // Create a new file (triggers files/ creation)
         fs::write(new_dir.path().join("added.bin"), b"added").unwrap();
 
-        run(orig_dir.path(), new_dir.path(), output_dir.path(), 1, None).unwrap();
+        run(orig_dir.path(), new_dir.path(), output_dir.path(), 1, None, false).unwrap();
 
         assert!(output_dir.path().join("manifest.json").exists());
         assert!(output_dir.path().join("diffs").exists());
@@ -139,7 +144,7 @@ mod tests {
         fs::write(orig_dir.path().join("file.bin"), orig_content).unwrap();
         fs::write(new_dir.path().join("file.bin"), new_content).unwrap();
 
-        run(orig_dir.path(), new_dir.path(), output_dir.path(), 1, None).unwrap();
+        run(orig_dir.path(), new_dir.path(), output_dir.path(), 1, None, false).unwrap();
 
         // Read the diff and apply it
         let diff_data = fs::read(output_dir.path().join("diffs").join("file.bin.diff")).unwrap();
@@ -157,7 +162,7 @@ mod tests {
         let content = b"new file content";
         fs::write(new_dir.path().join("new.bin"), content).unwrap();
 
-        run(orig_dir.path(), new_dir.path(), output_dir.path(), 1, None).unwrap();
+        run(orig_dir.path(), new_dir.path(), output_dir.path(), 1, None, false).unwrap();
 
         let copied = fs::read(output_dir.path().join("files").join("new.bin")).unwrap();
         assert_eq!(copied, content);
@@ -183,7 +188,7 @@ mod tests {
         fs::write(orig_dir.path().join("unchanged.bin"), b"same").unwrap();
         fs::write(new_dir.path().join("unchanged.bin"), b"same").unwrap();
 
-        run(orig_dir.path(), new_dir.path(), output_dir.path(), 1, None).unwrap();
+        run(orig_dir.path(), new_dir.path(), output_dir.path(), 1, None, false).unwrap();
 
         let manifest = Manifest::load(&output_dir.path().join("manifest.json")).unwrap();
 
@@ -216,7 +221,7 @@ mod tests {
         fs::write(orig_dir.path().join("file.bin"), orig_content).unwrap();
         fs::write(new_dir.path().join("file.bin"), new_content).unwrap();
 
-        run(orig_dir.path(), new_dir.path(), output_dir.path(), 1, None).unwrap();
+        run(orig_dir.path(), new_dir.path(), output_dir.path(), 1, None, false).unwrap();
 
         let manifest = Manifest::load(&output_dir.path().join("manifest.json")).unwrap();
 
@@ -245,7 +250,7 @@ mod tests {
         let new_dir = tempdir().unwrap();
         let output_dir = tempdir().unwrap();
 
-        run(orig_dir.path(), new_dir.path(), output_dir.path(), 1, None).unwrap();
+        run(orig_dir.path(), new_dir.path(), output_dir.path(), 1, None, false).unwrap();
 
         let manifest = Manifest::load(&output_dir.path().join("manifest.json")).unwrap();
         assert!(manifest.entries.is_empty());
@@ -260,7 +265,7 @@ mod tests {
         // Only a deleted file - no diffs/ or files/ needed
         fs::write(orig_dir.path().join("deleted.bin"), b"deleted").unwrap();
 
-        run(orig_dir.path(), new_dir.path(), output_dir.path(), 1, None).unwrap();
+        run(orig_dir.path(), new_dir.path(), output_dir.path(), 1, None, false).unwrap();
 
         assert!(output_dir.path().join("manifest.json").exists());
         assert!(!output_dir.path().join("diffs").exists());

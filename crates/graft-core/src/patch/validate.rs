@@ -2,6 +2,7 @@ use crate::patch::constants::{DIFFS_DIR, DIFF_EXTENSION, FILES_DIR, MANIFEST_FIL
 use crate::patch::error::PatchError;
 use crate::patch::verify::verify_entry;
 use crate::patch::{Progress, ProgressAction};
+use crate::path_restrictions;
 use crate::utils::hash::hash_bytes;
 use crate::utils::manifest::{Manifest, ManifestEntry};
 use std::fs;
@@ -268,6 +269,22 @@ where
         verify_entry(entry, target_dir)?;
     }
     Ok(())
+}
+
+/// Validate that a manifest's paths don't violate security restrictions.
+///
+/// When `manifest.allow_restricted` is false (the default), this checks:
+/// - No path traversal sequences (../)
+/// - No protected system directories
+/// - No blocked file extensions (executables)
+///
+/// If `manifest.allow_restricted` is true, all checks are bypassed.
+pub fn validate_path_restrictions(
+    manifest: &Manifest,
+    target_dir: &Path,
+) -> Result<(), PatchError> {
+    path_restrictions::check_manifest(manifest, target_dir)
+        .map_err(PatchError::RestrictedPaths)
 }
 
 #[cfg(test)]

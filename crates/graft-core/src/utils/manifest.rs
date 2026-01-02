@@ -37,6 +37,10 @@ pub struct Manifest {
     pub version: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
+    /// If true, allows patching restricted paths (system dirs, executables).
+    /// Default is false for security.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub allow_restricted: bool,
     pub entries: Vec<ManifestEntry>,
 }
 
@@ -45,6 +49,7 @@ impl Manifest {
         Manifest {
             version,
             title,
+            allow_restricted: false,
             entries: Vec::new(),
         }
     }
@@ -124,6 +129,7 @@ mod tests {
         let manifest = Manifest {
             version: 1,
             title: Some("Test Patcher".to_string()),
+            allow_restricted: false,
             entries: vec![
                 ManifestEntry::Patch {
                     file: "game.bin".to_string(),
@@ -194,6 +200,7 @@ mod tests {
         let manifest = Manifest {
             version: 1,
             title: None,
+            allow_restricted: false,
             entries: vec![ManifestEntry::Add {
                 file: "test.bin".to_string(),
                 final_hash: "hash123".to_string(),

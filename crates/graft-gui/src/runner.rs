@@ -134,6 +134,16 @@ impl PatchRunner {
         (on_progress.borrow_mut())(ProgressEvent::PhaseStarted {
             phase: Phase::Validating,
         });
+
+        // Check path restrictions first (unless allow_restricted is set in manifest)
+        if let Err(e) = patch::validate_path_restrictions(&self.manifest, target) {
+            (on_progress.borrow_mut())(ProgressEvent::Error {
+                message: "Path restrictions violated".to_string(),
+                details: Some(e.to_string()),
+            });
+            return Err(e);
+        }
+
         if let Err(e) = patch::validate_entries(&self.manifest.entries, target, Some(&send_operation))
         {
             (on_progress.borrow_mut())(ProgressEvent::Error {
@@ -186,7 +196,11 @@ impl PatchRunner {
     ///
     /// Returns Ok(()) if all files are in expected pre-patch state,
     /// or an error describing the first problem found.
+    ///
+    /// Also checks path restrictions (unless allow_restricted is set in manifest).
     pub fn validate_target(&self, target: &Path) -> Result<(), PatchError> {
+        // Check path restrictions first
+        patch::validate_path_restrictions(&self.manifest, target)?;
         patch::validate_entries(&self.manifest.entries, target, None::<fn(Progress)>)
     }
 

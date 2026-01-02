@@ -96,6 +96,23 @@ graft patch rollback <target-dir> <manifest-path> [--force]
 
 This restores files from `.patch-backup/` to their original state. The `--force` flag skips validation of target files (use when files have been modified since patching).
 
+### Path Restrictions
+
+By default, patches are blocked from modifying sensitive locations to prevent misuse:
+
+**Blocked paths:**
+- Path traversal (`../` sequences)
+- System directories (`/usr`, `/bin`, `/etc`, `C:\Windows`, etc.)
+- macOS `.app` bundles
+- Executable files (`.exe`, `.dll`, `.so`, `.dylib`, `.sh`, `.bin`, etc.)
+
+To create a patch that can target these locations (for trusted use cases):
+```bash
+graft patch create original/ modified/ my-patch/ --allow-restricted
+```
+
+This sets `"allow_restricted": true` in the manifest. Without this flag, patches default to `allow_restricted: false` and will be rejected if they attempt to modify restricted paths.
+
 ## GUI Patcher
 
 The `graft-gui` crate provides a graphical patcher application.
