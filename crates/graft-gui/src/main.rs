@@ -98,7 +98,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ///
 /// Priority:
 /// 1. Compile-time embedded data (if `embedded_patch` feature is enabled)
-/// 2. Runtime self-reading (appended data at end of executable)
+/// 2. macOS: Read from Contents/Resources/patch.data (preserves code signature)
+/// 3. Other platforms: Runtime self-reading (appended data at end of executable)
 fn get_patch_data() -> Result<Vec<u8>, Box<dyn std::error::Error>> {
     // Try compile-time embedded data first
     #[cfg(feature = "embedded_patch")]
@@ -107,10 +108,20 @@ fn get_patch_data() -> Result<Vec<u8>, Box<dyn std::error::Error>> {
         return Ok(PATCH_DATA.to_vec());
     }
 
-    // Fall back to runtime self-reading
+    // Platform-specific runtime reading
     #[cfg(not(feature = "embedded_patch"))]
     {
-        self_read::read_appended_data().map_err(|e| e.into())
+        // macOS: Read from Resources folder (preserves executable code signature)
+        #[cfg(target_os = "macos")]
+        {
+            self_read::read_resources_patch_data().map_err(|e| e.into())
+        }
+
+        // Other platforms: Read appended data from executable
+        #[cfg(not(target_os = "macos"))]
+        {
+            self_read::read_appended_data().map_err(|e| e.into())
+        }
     }
 }
 

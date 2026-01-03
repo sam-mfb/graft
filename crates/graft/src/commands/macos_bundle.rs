@@ -3,7 +3,6 @@
 //! Creates proper macOS application bundles with icons and Info.plist.
 //! Also supports modifying existing stub bundles.
 
-use graft_core::archive::MAGIC_MARKER;
 use graft_core::patch::{ASSETS_DIR, ICON_FILENAME};
 use icns::{IconFamily, Image};
 use std::fs::{self, File};
@@ -195,8 +194,7 @@ pub fn modify_bundle(
     let macos_dir = contents_dir.join("MacOS");
     let resources_dir = contents_dir.join("Resources");
 
-    // 2. Find and update the executable
-    // The executable name is "graft-gui" in the stub bundle
+    // 2. Verify the executable exists (but don't modify it - preserve code signature)
     let executable_path = macos_dir.join("graft-gui");
     if !executable_path.exists() {
         return Err(BundleError::FileWrite(io::Error::new(
@@ -205,17 +203,10 @@ pub fn modify_bundle(
         )));
     }
 
-    // Read existing executable and append patch data
-    let mut stub_data = fs::read(&executable_path).map_err(BundleError::FileWrite)?;
-
-    // Append: archive + size (8 bytes LE) + magic (8 bytes)
-    stub_data.extend_from_slice(archive_data);
-    let size_bytes = (archive_data.len() as u64).to_le_bytes();
-    stub_data.extend_from_slice(&size_bytes);
-    stub_data.extend_from_slice(MAGIC_MARKER);
-
-    fs::write(&executable_path, &stub_data).map_err(BundleError::FileWrite)?;
-    let total_size = stub_data.len();
+    // Write patch data to Resources folder (preserves executable code signature)
+    let patch_data_path = resources_dir.join("patch.data");
+    fs::write(&patch_data_path, archive_data).map_err(BundleError::FileWrite)?;
+    let total_size = archive_data.len();
 
     // 3. Update Info.plist with custom title and version
     let display_name = title.unwrap_or("Graft Patcher");
