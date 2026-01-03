@@ -4,9 +4,9 @@
 //! 1. Embedded in the binary (when compiled with `embedded-stubs` feature)
 //! 2. A directory specified by the user (for development or custom stubs)
 //!
-//! For macOS targets, stubs are distributed as .app bundles (zipped) which are
-//! extracted to a temporary location. Use `get_embedded_stub_bundle()` or
-//! `read_stub_bundle_from_dir()` for macOS targets.
+//! For macOS targets, stubs are distributed as .app bundles (zipped). For embedded
+//! stubs, use `extract_embedded_stub_bundle_to()` to extract directly to the output
+//! location. For directory-based stubs, use `read_stub_bundle_from_dir()`.
 
 use crate::targets::{self, Target, ALL_TARGETS};
 use std::fs::{self, File};
@@ -213,11 +213,12 @@ pub fn get_embedded_stub(target: &Target) -> Result<Vec<u8>, StubError> {
     }
 }
 
-/// Get embedded stub bundle path for macOS targets.
+/// Extract embedded stub bundle directly to the specified output path.
 ///
-/// Extracts the embedded zip to a temp directory and returns the path.
+/// This extracts the embedded zip directly to the output location without
+/// using any temporary files or caching, which is more secure.
 #[cfg(feature = "embedded-stubs")]
-pub fn get_embedded_stub_bundle(target: &Target) -> Result<PathBuf, StubError> {
+pub fn extract_embedded_stub_bundle_to(target: &Target, output_path: &Path) -> Result<(), StubError> {
     let zip_data: &[u8] = match target.name {
         "macos-x64" => include_bytes!(concat!(
             env!("GRAFT_STUBS_DIR"),
@@ -230,16 +231,5 @@ pub fn get_embedded_stub_bundle(target: &Target) -> Result<PathBuf, StubError> {
         _ => return Err(StubError::TargetNotAvailable(target.name.to_string())),
     };
 
-    let temp_dir = std::env::temp_dir().join("graft-stubs");
-    fs::create_dir_all(&temp_dir).map_err(StubError::TempDirError)?;
-
-    let bundle_name = format!("graft-gui-stub-{}.app", target.name);
-    let bundle_path = temp_dir.join(&bundle_name);
-
-    // Extract if not already present
-    if !bundle_path.exists() {
-        extract_zip(zip_data, &bundle_path)?;
-    }
-
-    Ok(bundle_path)
+    extract_zip(zip_data, output_path)
 }

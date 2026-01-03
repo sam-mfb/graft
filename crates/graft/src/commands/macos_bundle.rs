@@ -172,6 +172,9 @@ pub fn convert_png_to_icns(png_path: &Path, icns_path: &Path) -> Result<(), Bund
 
 /// Modify an existing stub bundle to create a patcher.
 ///
+/// This copies the stub bundle to output_path, then finalizes it.
+/// Use `finalize_bundle` directly if the bundle is already at output_path.
+///
 /// # Arguments
 /// * `stub_bundle_path` - Path to the stub .app bundle
 /// * `output_path` - Path for the output .app bundle
@@ -187,14 +190,36 @@ pub fn modify_bundle(
     title: Option<&str>,
     version: &str,
 ) -> Result<usize, BundleError> {
-    // 1. Copy stub bundle to output location
+    // Copy stub bundle to output location
     copy_dir_recursive(stub_bundle_path, output_path)?;
 
+    // Finalize the bundle
+    finalize_bundle(output_path, archive_data, patch_dir, title, version)
+}
+
+/// Finalize a bundle that is already at output_path.
+///
+/// This adds patch data, updates Info.plist, and optionally replaces the icon.
+/// The bundle must already exist at output_path (e.g., extracted from a zip).
+///
+/// # Arguments
+/// * `output_path` - Path to the .app bundle (must already exist)
+/// * `archive_data` - The patch archive data to add
+/// * `patch_dir` - Path to the patch directory (for reading custom icon)
+/// * `title` - Display title for the app (from manifest)
+/// * `version` - Version string for the app
+pub fn finalize_bundle(
+    output_path: &Path,
+    archive_data: &[u8],
+    patch_dir: &Path,
+    title: Option<&str>,
+    version: &str,
+) -> Result<usize, BundleError> {
     let contents_dir = output_path.join("Contents");
     let macos_dir = contents_dir.join("MacOS");
     let resources_dir = contents_dir.join("Resources");
 
-    // 2. Verify the executable exists (but don't modify it - preserve code signature)
+    // Verify the executable exists (but don't modify it - preserve code signature)
     let executable_path = macos_dir.join("graft-gui");
     if !executable_path.exists() {
         return Err(BundleError::FileWrite(io::Error::new(
@@ -208,7 +233,7 @@ pub fn modify_bundle(
     fs::write(&patch_data_path, archive_data).map_err(BundleError::FileWrite)?;
     let total_size = archive_data.len();
 
-    // 3. Update Info.plist with custom title and version
+    // Update Info.plist with custom title and version
     let display_name = title.unwrap_or("Graft Patcher");
     let app_name = output_path
         .file_stem()
@@ -230,7 +255,7 @@ pub fn modify_bundle(
     let plist_path = contents_dir.join("Info.plist");
     fs::write(&plist_path, plist_content).map_err(BundleError::FileWrite)?;
 
-    // 4. Replace icon if patch has custom icon
+    // Replace icon if patch has custom icon
     let custom_icon_path = patch_dir.join(ASSETS_DIR).join(ICON_FILENAME);
     if custom_icon_path.exists() {
         let icns_path = resources_dir.join("AppIcon.icns");

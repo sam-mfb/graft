@@ -209,24 +209,50 @@ fn build_single(
 
     // Build patcher based on target type
     if target.stub_is_bundle {
-        // macOS: Get stub bundle, copy and modify it
-        print!("Getting stub bundle... ");
-        io::stdout().flush().ok();
-        let stub_bundle_path = get_stub_bundle(target, stub_source)?;
-        println!("done");
-
+        // macOS: Extract/copy stub bundle and finalize it
         print!("Creating macOS bundle at {}... ", output.display());
         io::stdout().flush().ok();
 
-        let total_size = macos_bundle::modify_bundle(
-            &stub_bundle_path,
-            &output,
-            &archive_data,
-            patch_dir,
-            info.title.as_deref(),
-            &info.version.to_string(),
-        )
-        .map_err(PatcherError::BundleError)?;
+        // For embedded stubs, extract directly to output (no temp files)
+        // For directory stubs, copy then finalize
+        #[cfg(feature = "embedded-stubs")]
+        let total_size = if matches!(stub_source, StubSource::Embedded) {
+            stubs::extract_embedded_stub_bundle_to(target, &output)
+                .map_err(PatcherError::StubError)?;
+            macos_bundle::finalize_bundle(
+                &output,
+                &archive_data,
+                patch_dir,
+                info.title.as_deref(),
+                &info.version.to_string(),
+            )
+            .map_err(PatcherError::BundleError)?
+        } else {
+            let stub_bundle_path = get_stub_bundle(target, stub_source)?;
+            macos_bundle::modify_bundle(
+                &stub_bundle_path,
+                &output,
+                &archive_data,
+                patch_dir,
+                info.title.as_deref(),
+                &info.version.to_string(),
+            )
+            .map_err(PatcherError::BundleError)?
+        };
+
+        #[cfg(not(feature = "embedded-stubs"))]
+        let total_size = {
+            let stub_bundle_path = get_stub_bundle(target, stub_source)?;
+            macos_bundle::modify_bundle(
+                &stub_bundle_path,
+                &output,
+                &archive_data,
+                patch_dir,
+                info.title.as_deref(),
+                &info.version.to_string(),
+            )
+            .map_err(PatcherError::BundleError)?
+        };
 
         println!("done");
         println!();
@@ -296,7 +322,9 @@ fn get_stub_bundle(target: &Target, stub_source: &StubSource<'_>) -> Result<Path
         }
         #[cfg(feature = "embedded-stubs")]
         StubSource::Embedded => {
-            stubs::get_embedded_stub_bundle(target).map_err(PatcherError::StubError)
+            // This branch is unreachable - embedded bundle stubs are handled
+            // directly via extract_embedded_stub_bundle_to() in build_single()
+            unreachable!("Embedded bundle stubs should use direct extraction")
         }
     }
 }
