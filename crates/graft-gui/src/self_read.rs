@@ -21,6 +21,8 @@
 use graft_core::archive::MAGIC_MARKER;
 use std::fs::File;
 use std::io::{self, Read, Seek, SeekFrom};
+#[cfg(target_os = "macos")]
+use std::fs;
 
 /// Errors that can occur when reading appended patch data.
 #[derive(Debug)]
@@ -109,6 +111,40 @@ pub fn read_appended_data() -> Result<Vec<u8>, SelfReadError> {
     file.read_exact(&mut patch_data)?;
 
     Ok(patch_data)
+}
+
+/// Read patch data from the Resources folder in a macOS .app bundle.
+///
+/// On macOS, the executable is at:
+///   `MyApp.app/Contents/MacOS/graft-gui`
+///
+/// And patch data is stored at:
+///   `MyApp.app/Contents/Resources/patch.data`
+///
+/// This approach preserves the executable's code signature.
+#[cfg(target_os = "macos")]
+pub fn read_resources_patch_data() -> Result<Vec<u8>, SelfReadError> {
+    let exe_path = std::env::current_exe().map_err(SelfReadError::IoError)?;
+
+    // exe_path: /path/to/MyApp.app/Contents/MacOS/graft-gui
+    // target:   /path/to/MyApp.app/Contents/Resources/patch.data
+    let contents_dir = exe_path
+        .parent() // MacOS/
+        .and_then(|p| p.parent()) // Contents/
+        .ok_or_else(|| {
+            SelfReadError::IoError(io::Error::new(
+                io::ErrorKind::NotFound,
+                "Could not find Contents directory",
+            ))
+        })?;
+
+    let patch_data_path = contents_dir.join("Resources").join("patch.data");
+
+    if !patch_data_path.exists() {
+        return Err(SelfReadError::NoAppendedData);
+    }
+
+    fs::read(&patch_data_path).map_err(SelfReadError::IoError)
 }
 
 #[cfg(test)]
